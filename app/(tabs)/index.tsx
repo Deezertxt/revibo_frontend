@@ -6,6 +6,7 @@ import ParallaxScrollView from '@/components/parallax-scroll-view';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Link } from 'expo-router';
+import App from '../../App';
 
 export default function HomeScreen() {
   return (
@@ -17,6 +18,7 @@ export default function HomeScreen() {
           style={styles.reactLogo}
         />
       }>
+      <App/>
       <ThemedView style={styles.titleContainer}>
         <ThemedText type="title">Welcome!</ThemedText>
         <HelloWave />
