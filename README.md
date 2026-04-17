@@ -9,7 +9,6 @@ revibo_frontend/
 |- app/                        # Rutas de Expo Router (file-based routing)
 |- assets/
 |- src/
-|  |- app/                     # Reservado para migracion futura de rutas
 |  |- features/                # Dominios de negocio (map, incidents, auth, etc.)
 |  |- shared/
 |  |  |- components/
@@ -28,6 +27,7 @@ revibo_frontend/
 ## Por que esta estructura
 
 - `app/` queda en raiz para mantener Expo Router estable sin configuracion extra.
+- No crear `src/app` mientras uses Expo Router con rutas en `app/`, porque Expo tomaria `src/app` como raiz de navegacion.
 - `src/features` organiza la logica por dominio para escalar mejor.
 - `src/shared` contiene piezas reutilizables y evita duplicacion.
 - `src/services`, `src/store` y `src/utils` separan responsabilidades tecnicas.
