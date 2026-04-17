@@ -1,4 +1,5 @@
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
+import { Image } from 'expo-image';
 import * as Location from 'expo-location';
 import { useRouter } from 'expo-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -19,11 +20,14 @@ import {
   fetchActiveIncidents,
 } from '@/features/incidents/incidents.service';
 import {
+  INCIDENT_SEVERITY_LABELS,
+  INCIDENT_STATUS_LABELS,
   INCIDENT_TYPE_COLORS,
   INCIDENT_TYPE_LABELS,
   Incident,
   IncidentType,
 } from '@/features/incidents/types';
+import { getSavedMapRegion, setSavedMapRegion } from '@/features/map/map-view-state';
 
 const PRIMARY = '#5B3FD9';
 const LOCATION_FAB_BOTTOM_OFFSET = 8;
@@ -50,7 +54,44 @@ export default function MapHomeScreen() {
   );
   const [infoMessage, setInfoMessage] = useState<string | null>(null);
   const [centeringUser, setCenteringUser] = useState(false);
-  const hasAppliedInitialFitRef = useRef(false);
+  const [selectedIncident, setSelectedIncident] = useState<Incident | null>(null);
+  const [sheetExpanded, setSheetExpanded] = useState(false);
+  const restoredRegion = getSavedMapRegion();
+  const hasAppliedInitialFitRef = useRef(Boolean(restoredRegion));
+  const handleTouchStartY = useRef<number | null>(null);
+
+  const closeIncidentDetail = () => {
+    setSelectedIncident(null);
+    setSheetExpanded(false);
+  };
+
+  const handleSheetTouchStart = (pageY: number) => {
+    handleTouchStartY.current = pageY;
+  };
+
+  const handleSheetTouchEnd = (pageY: number) => {
+    if (handleTouchStartY.current == null) {
+      return;
+    }
+
+    const dragDistance = handleTouchStartY.current - pageY;
+    handleTouchStartY.current = null;
+
+    // Arriba: expandir
+    if (dragDistance > 25) {
+      setSheetExpanded(true);
+      return;
+    }
+
+    // Abajo: contraer o cerrar
+    if (dragDistance < -25) {
+      if (sheetExpanded) {
+        setSheetExpanded(false);
+      } else {
+        closeIncidentDetail();
+      }
+    }
+  };
 
   const centerToUserLocation = async () => {
     if (!mapRef.current) {
@@ -96,6 +137,21 @@ export default function MapHomeScreen() {
     } finally {
       setCenteringUser(false);
     }
+  };
+
+  const openIncidentDetail = (incident: Incident) => {
+    setSheetExpanded(false);
+    setSelectedIncident(incident);
+
+    mapRef.current?.animateToRegion(
+      {
+        latitude: incident.latitude - 0.004,
+        longitude: incident.longitude,
+        latitudeDelta: 0.012,
+        longitudeDelta: 0.012,
+      },
+      450
+    );
   };
 
   useEffect(() => {
@@ -178,6 +234,14 @@ export default function MapHomeScreen() {
     return incidents.filter((incident) => incident.type === selectedFilter);
   }, [incidents, selectedFilter]);
 
+  const selectedIncidentProgress = useMemo(() => {
+    if (!selectedIncident?.endAt) {
+      return null;
+    }
+
+    return buildProgress(selectedIncident.startAt, selectedIncident.endAt);
+  }, [selectedIncident]);
+
   useEffect(() => {
     if (!incidents.length || hasAppliedInitialFitRef.current || !mapRef.current) {
       return;
@@ -206,6 +270,8 @@ export default function MapHomeScreen() {
     if (!mapRef.current) {
       return;
     }
+
+    setSelectedIncident(null);
 
     if (filteredIncidents.length === 0) {
       mapRef.current.animateToRegion(DEFAULT_REGION, 550);
@@ -288,7 +354,7 @@ export default function MapHomeScreen() {
 
       <MapView
         ref={mapRef}
-        initialRegion={DEFAULT_REGION}
+        initialRegion={restoredRegion ?? DEFAULT_REGION}
         style={styles.map}
         showsUserLocation
         showsMyLocationButton={false}
@@ -296,7 +362,8 @@ export default function MapHomeScreen() {
         scrollEnabled
         zoomEnabled
         rotateEnabled
-        pitchEnabled>
+        pitchEnabled
+        onRegionChangeComplete={(region) => setSavedMapRegion(region)}>
         {filteredIncidents.map((incident) => (
           <Marker
             key={incident.id}
@@ -304,19 +371,19 @@ export default function MapHomeScreen() {
             pinColor={INCIDENT_TYPE_COLORS[incident.type]}
             title={incident.title}
             description={incident.description}
-            onPress={() =>
-              router.push({
-                pathname: '/report/[id]',
-                params: { id: incident.id },
-              })
-            }
+            onPress={() => openIncidentDetail(incident)}
           />
         ))}
       </MapView>
 
       <Pressable
         onPress={centerToUserLocation}
-        style={[styles.locationFab, { bottom: insets.bottom + LOCATION_FAB_BOTTOM_OFFSET }]}
+        style={[
+          styles.locationFab,
+          {
+            bottom: insets.bottom + (selectedIncident ? 320 : LOCATION_FAB_BOTTOM_OFFSET),
+          },
+        ]}
         accessibilityRole="button"
         accessibilityLabel="Ir a mi ubicacion">
         {centeringUser ? (
@@ -334,10 +401,185 @@ export default function MapHomeScreen() {
       ) : null}
 
       {infoMessage ? (
-        <View pointerEvents="none" style={[styles.infoBanner, { bottom: insets.bottom + 94 }]}>
+        <View
+          pointerEvents="none"
+          style={[styles.infoBanner, { bottom: insets.bottom + (selectedIncident ? 330 : 94) }]}>
           <Text style={styles.infoText}>{infoMessage}</Text>
         </View>
       ) : null}
+
+      {selectedIncident ? (
+        <>
+          <Pressable
+            style={styles.sheetOverlay}
+            onPress={closeIncidentDetail}
+          />
+          <View
+            style={[
+              styles.detailSheet,
+              {
+                maxHeight: sheetExpanded ? '90%' : '50%',
+                paddingBottom: insets.bottom + 10,
+              },
+            ]}>
+          <Pressable
+            hitSlop={8}
+            onTouchStart={(event) => handleSheetTouchStart(event.nativeEvent.pageY)}
+            onTouchEnd={(event) => handleSheetTouchEnd(event.nativeEvent.pageY)}
+            style={styles.sheetHandle}>
+            <View style={styles.sheetHandleBar} />
+          </Pressable>
+          <ScrollView
+            scrollEnabled
+            nestedScrollEnabled
+            showsVerticalScrollIndicator={false}
+            style={{ flex: 1 }}
+            contentContainerStyle={styles.detailSheetContent}>
+            <View style={styles.sheetHeaderRow}>
+              <View style={styles.typeBadge}>
+                <Text style={styles.typeBadgeText}>{INCIDENT_TYPE_LABELS[selectedIncident.type].slice(0, -1)}</Text>
+              </View>
+              <Text style={styles.relativeText}>{formatRelativeTime(selectedIncident.startAt)}</Text>
+            </View>
+
+            <Text style={styles.sheetTitle}>{selectedIncident.title}</Text>
+
+            <View style={styles.locationRow}>
+              <View style={[styles.locationDot, { backgroundColor: INCIDENT_TYPE_COLORS[selectedIncident.type] }]} />
+              <Text style={styles.locationText}>{selectedIncident.locationText}</Text>
+            </View>
+
+            <View style={styles.chipsRow}>
+              <StatusChip text={INCIDENT_STATUS_LABELS[selectedIncident.status]} />
+              <SeverityChip text={INCIDENT_SEVERITY_LABELS[selectedIncident.severity]} severity={selectedIncident.severity} />
+              <AuthorityChip text={selectedIncident.authority} />
+            </View>
+
+            {selectedIncidentProgress ? (
+              <View style={styles.progressBlock}>
+                <Text style={styles.progressLabel}>{selectedIncidentProgress.label}</Text>
+                <View style={styles.progressTrack}>
+                  <View style={[styles.progressFill, { width: `${selectedIncidentProgress.percent}%` }]} />
+                </View>
+              </View>
+            ) : null}
+
+            <Text style={styles.descriptionText}>{selectedIncident.description}</Text>
+
+            {selectedIncident.imageUrls && selectedIncident.imageUrls.length > 0 ? (
+              <View style={styles.imagesSection}>
+                <Text style={styles.imagesTitle}>Imagenes adjuntas</Text>
+                <ScrollView
+                  horizontal
+                  nestedScrollEnabled
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.imagesRow}>
+                  {selectedIncident.imageUrls.map((imageUrl) => (
+                    <Image key={imageUrl} source={{ uri: imageUrl }} style={styles.reportImage} contentFit="cover" />
+                  ))}
+                </ScrollView>
+              </View>
+            ) : null}
+
+            {selectedIncident.status !== 'resuelto' ? (
+              <Pressable
+                style={styles.routeButton}
+                onPress={() =>
+                  router.push({
+                    pathname: '/(tabs)/rutas',
+                    params: {
+                      incidentId: selectedIncident.id,
+                      incidentLat: String(selectedIncident.latitude),
+                      incidentLng: String(selectedIncident.longitude),
+                    },
+                  })
+                }>
+                <Text style={styles.routeButtonText}>Ver ruta alternativa</Text>
+                <MaterialIcons name="arrow-forward" size={18} color="#FFFFFF" />
+              </Pressable>
+            ) : (
+              <Pressable style={[styles.routeButton, styles.routeButtonDisabled]} disabled>
+                <Text style={styles.routeButtonText}>Reporte resuelto</Text>
+              </Pressable>
+            )}
+
+            <Pressable onPress={closeIncidentDetail} style={styles.closeSheetButton}>
+              <Text style={styles.closeSheetText}>Cerrar</Text>
+            </Pressable>
+          </ScrollView>
+        </View>
+        </>
+      ) : null}
+    </View>
+  );
+}
+
+function formatRelativeTime(dateIso: string): string {
+  const elapsedMs = Date.now() - new Date(dateIso).getTime();
+  const minutes = Math.floor(elapsedMs / 60000);
+
+  if (minutes < 1) {
+    return 'hace menos de 1 min';
+  }
+
+  if (minutes < 60) {
+    return `hace ${minutes} min`;
+  }
+
+  const hours = Math.floor(minutes / 60);
+
+  if (hours < 24) {
+    return `hace ${hours} h`;
+  }
+
+  return `hace ${Math.floor(hours / 24)} d`;
+}
+
+function buildProgress(startAt: string, endAt: string) {
+  const now = Date.now();
+  const start = new Date(startAt).getTime();
+  const end = new Date(endAt).getTime();
+  const total = Math.max(end - start, 1);
+  const elapsed = Math.min(Math.max(now - start, 0), total);
+  const percent = Math.round((elapsed / total) * 100);
+  const remainingMinutes = Math.max(Math.ceil((end - now) / 60000), 0);
+
+  return {
+    percent,
+    label:
+      remainingMinutes > 0
+        ? `Tiempo estimado: ${remainingMinutes} min restantes`
+        : 'Tiempo estimado: finalizado',
+  };
+}
+
+function StatusChip({ text }: { text: string }) {
+  return (
+    <View style={styles.statusChip}>
+      <Text style={styles.statusChipText}>{text}</Text>
+    </View>
+  );
+}
+
+function SeverityChip({ text, severity }: { text: string; severity: Incident['severity'] }) {
+  const severityStyle =
+    severity === 'alta'
+      ? styles.severityHigh
+      : severity === 'media'
+      ? styles.severityMedium
+      : styles.severityLow;
+
+  return (
+    <View style={[styles.severityChip, severityStyle]}>
+      <Text style={styles.severityChipText}>{text}</Text>
+    </View>
+  );
+}
+
+function AuthorityChip({ text }: { text: string }) {
+  return (
+    <View style={styles.authorityChip}>
+      <Text style={styles.authorityChipText}>{text}</Text>
     </View>
   );
 }
@@ -470,5 +712,219 @@ const styles = StyleSheet.create({
   infoText: {
     color: '#FFFFFF',
     fontSize: 13,
+  },
+  detailSheet: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    minHeight: 280,
+    maxHeight: '50%',
+    zIndex: 10,
+    display: 'flex',
+    flexDirection: 'column',
+  },
+  detailSheetContent: {
+    gap: 12,
+    paddingBottom: 12,
+    paddingTop: 8,
+  },
+  sheetOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.3)',
+  },
+  sheetHandle: {
+    alignSelf: 'center',
+    width: 64,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: 'transparent',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 6,
+  },
+  sheetHandleBar: {
+    width: 48,
+    height: 5,
+    borderRadius: 2.5,
+    backgroundColor: '#D8D4E0',
+  },
+  sheetHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  typeBadge: {
+    borderRadius: 12,
+    backgroundColor: '#FDE8E8',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  typeBadgeText: {
+    color: '#D05353',
+    fontWeight: '700',
+    fontSize: 12,
+  },
+  relativeText: {
+    color: '#78748A',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  sheetTitle: {
+    fontSize: 34,
+    lineHeight: 38,
+    color: '#2F2B3A',
+    fontWeight: '800',
+  },
+  locationRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+  },
+  locationDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    marginTop: 4,
+  },
+  locationText: {
+    flex: 1,
+    color: '#565469',
+    fontSize: 14,
+    lineHeight: 20,
+    fontWeight: '600',
+  },
+  chipsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  statusChip: {
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: '#66A63D',
+    backgroundColor: '#EFF9E9',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  statusChipText: {
+    color: '#5F8E2F',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  severityChip: {
+    borderRadius: 999,
+    borderWidth: 1,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  severityHigh: {
+    borderColor: '#E0A33C',
+    backgroundColor: '#FEF2DE',
+  },
+  severityMedium: {
+    borderColor: '#D7C758',
+    backgroundColor: '#FCF8E0',
+  },
+  severityLow: {
+    borderColor: '#5EA679',
+    backgroundColor: '#E9F8EE',
+  },
+  severityChipText: {
+    color: '#AD7419',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  authorityChip: {
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: '#6F61DD',
+    backgroundColor: '#EEEAFE',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  authorityChipText: {
+    color: '#6558C9',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  progressBlock: {
+    gap: 6,
+  },
+  progressLabel: {
+    color: '#7C788A',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  progressTrack: {
+    width: '100%',
+    height: 5,
+    borderRadius: 6,
+    backgroundColor: '#E7E7EC',
+    overflow: 'hidden',
+  },
+  progressFill: {
+    height: '100%',
+    backgroundColor: '#E24A4A',
+  },
+  descriptionText: {
+    color: '#4C4958',
+    lineHeight: 22,
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  routeButton: {
+    borderRadius: 14,
+    backgroundColor: PRIMARY,
+    minHeight: 52,
+    paddingHorizontal: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 4,
+  },
+  routeButtonDisabled: {
+    opacity: 0.55,
+  },
+  routeButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  imagesSection: {
+    gap: 8,
+  },
+  imagesTitle: {
+    color: '#2F2B3A',
+    fontWeight: '700',
+    fontSize: 15,
+  },
+  imagesRow: {
+    gap: 10,
+    paddingRight: 8,
+  },
+  reportImage: {
+    width: 190,
+    height: 120,
+    borderRadius: 12,
+    backgroundColor: '#ECECF2',
+  },
+  closeSheetButton: {
+    alignSelf: 'center',
+    paddingVertical: 4,
+  },
+  closeSheetText: {
+    color: '#6F61DD',
+    fontWeight: '700',
   },
 });

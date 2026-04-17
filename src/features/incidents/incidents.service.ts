@@ -21,6 +21,25 @@ export async function fetchActiveIncidents(): Promise<Incident[]> {
   return MOCK_INCIDENTS.filter((incident) => incident.status === 'activo');
 }
 
+export async function fetchIncidentDetailById(id: string): Promise<Incident> {
+  const netState = await NetInfo.fetch();
+
+  if (!netState.isConnected || netState.isInternetReachable === false) {
+    throw new ConnectivityError('Sin conexion. No se pudo cargar el detalle del reporte.');
+  }
+
+  // Simulate backend latency while keeping UX under 1.5s.
+  await new Promise((resolve) => setTimeout(resolve, 250));
+
+  const incident = MOCK_INCIDENTS.find((item) => item.id === id);
+
+  if (!incident) {
+    throw new Error('No se encontro el reporte solicitado.');
+  }
+
+  return incident;
+}
+
 export function getIncidentById(id: string): Incident | undefined {
   return MOCK_INCIDENTS.find((incident) => incident.id === id);
 }
