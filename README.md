@@ -1,50 +1,81 @@
-# Welcome to your Expo app 👋
+# Revibo Frontend (Expo + Expo Router)
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+Aplicacion mobile con arquitectura modular por dominios y codigo compartido centralizado en `src/`.
 
-## Get started
+## Estructura del proyecto
 
-1. Install dependencies
-
-   ```bash
-   npm install
-   ```
-
-2. Start the app
-
-   ```bash
-   npx expo start
-   ```
-
-In the output, you'll find options to open the app in a
-
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
-
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
-
-## Get a fresh project
-
-When you're ready, run:
-
-```bash
-npm run reset-project
+```text
+revibo_frontend/
+|- app/                        # Rutas de Expo Router (file-based routing)
+|- assets/
+|- src/
+|  |- app/                     # Reservado para migracion futura de rutas
+|  |- features/                # Dominios de negocio (map, incidents, auth, etc.)
+|  |- shared/
+|  |  |- components/
+|  |  |- hooks/
+|  |  |- constants/
+|  |- services/                # Clientes API / integraciones externas
+|  |- store/                   # Estado global
+|  |- utils/                   # Utilidades puras
+|- App.tsx                     # Componente temporal de ejemplo NativeWind
+|- app.json
+|- package.json
+|- tsconfig.json
+|- .env.example
 ```
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+## Por que esta estructura
 
-## Learn more
+- `app/` queda en raiz para mantener Expo Router estable sin configuracion extra.
+- `src/features` organiza la logica por dominio para escalar mejor.
+- `src/shared` contiene piezas reutilizables y evita duplicacion.
+- `src/services`, `src/store` y `src/utils` separan responsabilidades tecnicas.
 
-To learn more about developing your project with Expo, look at the following resources:
+## Alias e imports
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+Se usa el alias `@/` en `tsconfig.json` con prioridad a `src`.
 
-## Join the community
+- `@/shared/...` -> codigo compartido
+- `@/features/...` -> modulos por dominio
+- `@/assets/...` -> recursos estaticos en raiz
 
-Join our community of developers creating universal apps.
+## Instalacion y ejecucion
 
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+
+1. Instalar dependencias:
+
+```bash
+npm install
+```
+
+2. Iniciar el servidor de desarrollo:
+
+```bash
+npm run start
+```
+
+Si en tu terminal aparece "expo no se reconoce", usa esta alternativa:
+
+```bash
+npx expo start
+```
+
+Comandos utiles:
+
+- `npm run android` (abre en Android)
+- `npm run ios` (abre en iOS, solo macOS)
+- `npm run web` (abre en navegador)
+- `npm run lint` (ejecuta lint)
+
+## Convenciones recomendadas
+
+- Mantener las pantallas/rutas dentro de `app/`.
+- Mover logica de negocio y UI reutilizable a `src/features` y `src/shared`.
+- Evitar importar directo entre features; compartir por `src/shared` o `src/services`.
+
+## Proxima migracion sugerida
+
+- Crear carpetas por feature dentro de `src/features` (por ejemplo `map`, `incidents`, `auth`).
+- Extraer gradualmente componentes usados por una sola feature.
+- Dejar en `src/shared` solo elementos realmente reutilizables.

@@ -1,13 +1,13 @@
 import { Image } from 'expo-image';
 import { Platform, StyleSheet } from 'react-native';
 
-import { Collapsible } from '@/components/ui/collapsible';
-import { ExternalLink } from '@/components/external-link';
-import ParallaxScrollView from '@/components/parallax-scroll-view';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { IconSymbol } from '@/components/ui/icon-symbol';
-import { Fonts } from '@/constants/theme';
+import { ExternalLink } from '@/shared/components/external-link';
+import ParallaxScrollView from '@/shared/components/parallax-scroll-view';
+import { ThemedText } from '@/shared/components/themed-text';
+import { ThemedView } from '@/shared/components/themed-view';
+import { Collapsible } from '@/shared/components/ui/collapsible';
+import { IconSymbol } from '@/shared/components/ui/icon-symbol';
+import { Fonts } from '@/shared/constants/theme';
 
 export default function TabTwoScreen() {
   return (
@@ -78,7 +78,8 @@ export default function TabTwoScreen() {
       <Collapsible title="Animations">
         <ThemedText>
           This template includes an example of an animated component. The{' '}
-          <ThemedText type="defaultSemiBold">components/HelloWave.tsx</ThemedText> component uses
+          <ThemedText type="defaultSemiBold">src/shared/components/hello-wave.tsx</ThemedText>{' '}
+          component uses
           the powerful{' '}
           <ThemedText type="defaultSemiBold" style={{ fontFamily: Fonts.mono }}>
             react-native-reanimated
@@ -88,7 +89,10 @@ export default function TabTwoScreen() {
         {Platform.select({
           ios: (
             <ThemedText>
-              The <ThemedText type="defaultSemiBold">components/ParallaxScrollView.tsx</ThemedText>{' '}
+              The{' '}
+              <ThemedText type="defaultSemiBold">
+                src/shared/components/parallax-scroll-view.tsx
+              </ThemedText>{' '}
               component provides a parallax effect for the header image.
             </ThemedText>
           ),
