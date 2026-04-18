@@ -1,4 +1,38 @@
-let isRegistered = false;
+type AuthSession = {
+	isRegistered: boolean;
+	accessToken: string | null;
+	name: string | null;
+	email: string | null;
+};
 
-export const setRegistered = () => { isRegistered = true; };
-export const getIsRegistered = () => isRegistered;
+let authSession: AuthSession = {
+	isRegistered: false,
+	accessToken: null,
+	name: null,
+	email: null,
+};
+
+export const setRegistered = (session?: Partial<Omit<AuthSession, 'isRegistered'>>) => {
+	authSession = {
+		...authSession,
+		isRegistered: true,
+		accessToken: session?.accessToken ?? authSession.accessToken,
+		name: session?.name ?? authSession.name,
+		email: session?.email ?? authSession.email,
+	};
+};
+
+export const getIsRegistered = () => authSession.isRegistered;
+
+export const getAccessToken = () => authSession.accessToken;
+
+export const getAuthSession = () => authSession;
+
+export const clearAuthSession = () => {
+	authSession = {
+		isRegistered: false,
+		accessToken: null,
+		name: null,
+		email: null,
+	};
+};

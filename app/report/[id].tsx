@@ -10,7 +10,7 @@ import {
     Text,
     View,
 } from 'react-native';
-import MapView, { Marker } from 'react-native-maps';
+import MapView, { Marker, Polyline } from 'react-native-maps';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { fetchIncidentDetailById } from '@/features/incidents/incidents.service';
@@ -113,10 +113,24 @@ export default function IncidentDetailScreen() {
               zoomEnabled={false}
               rotateEnabled={false}
               pitchEnabled={false}>
-              <Marker
-                coordinate={{ latitude: incident.latitude, longitude: incident.longitude }}
-                pinColor={INCIDENT_TYPE_COLORS[incident.type]}
-              />
+              {incident.geometryType === 'LineString' ? (
+                <>
+                  <Polyline
+                    coordinates={incident.mapCoordinates}
+                    strokeColor={INCIDENT_TYPE_COLORS[incident.type]}
+                    strokeWidth={5}
+                  />
+                  <Marker
+                    coordinate={{ latitude: incident.latitude, longitude: incident.longitude }}
+                    pinColor={INCIDENT_TYPE_COLORS[incident.type]}
+                  />
+                </>
+              ) : (
+                <Marker
+                  coordinate={{ latitude: incident.latitude, longitude: incident.longitude }}
+                  pinColor={INCIDENT_TYPE_COLORS[incident.type]}
+                />
+              )}
             </MapView>
 
             <Pressable
@@ -132,7 +146,7 @@ export default function IncidentDetailScreen() {
           <View style={styles.contentCard}>
             <View style={styles.titleRow}>
               <View style={styles.typeBadge}>
-                <Text style={styles.typeBadgeText}>{INCIDENT_TYPE_LABELS[incident.type].slice(0, -1)}</Text>
+                <Text style={styles.typeBadgeText}>{INCIDENT_TYPE_LABELS[incident.type]}</Text>
               </View>
               <Text style={styles.relativeText}>{relativeTime}</Text>
             </View>
@@ -266,11 +280,11 @@ function statusChipStyle(status: IncidentStatus) {
 }
 
 function severityChipStyle(severity: IncidentSeverity) {
-  if (severity === 'alta') {
+  if (severity === 'Critico') {
     return { container: styles.severityHigh, textColor: '#AD7419' };
   }
 
-  if (severity === 'media') {
+  if (severity === 'Alto') {
     return { container: styles.severityMedium, textColor: '#9A8B2E' };
   }
 

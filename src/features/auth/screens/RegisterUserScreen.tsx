@@ -1,8 +1,9 @@
+import { registerUser } from '@/features/auth/services/auth.service';
 import { setRegistered } from '@/shared/store/authStore';
 import { useRouter } from 'expo-router';
-import React, { useState } from "react";
+import React, { useState } from 'react';
 import { Controller, useForm } from "react-hook-form";
-import { Alert, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, Alert, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
 
 type FormData = {
@@ -18,19 +19,41 @@ const ACCENT = '#7C63E8';
 export default function RegisterUserScreen() {
   const [showPass, setShowPass] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   const router = useRouter();
 
   const { control, handleSubmit, watch } = useForm<FormData>({
-    defaultValues: { username: '', email: '', password: '', confirmPassword: '' }
+    defaultValues: { username: '', email: '', password: '', confirmPassword: '' },
   });
 
   const password = watch("password");
 
-  const onSubmit = (data: FormData) => {
-    setRegistered();
-    Alert.alert("¡Éxito!", "Cuenta creada correctamente", [
-      { text: "OK", onPress: () => router.replace('/(tabs)/perfil') }
-    ]);
+  const onSubmit = async (data: FormData) => {
+    setSubmitting(true);
+
+    try {
+      const result = await registerUser({
+        nombre: data.username,
+        correo: data.email,
+        contrasena: data.password,
+        confirmacion_contrasena: data.confirmPassword,
+      });
+
+      setRegistered({
+        accessToken: result.accessToken,
+        name: result.user.nombre,
+        email: result.user.correo,
+      });
+
+      Alert.alert('¡Éxito!', 'Cuenta creada correctamente en el backend', [
+        { text: 'OK', onPress: () => router.replace('/(tabs)/perfil') },
+      ]);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'No se pudo registrar el usuario.';
+      Alert.alert('Error', message);
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -75,8 +98,8 @@ export default function RegisterUserScreen() {
           control={control}
           name="email"
           rules={{
-            required: "Este campo es obligatorio",
-            pattern: { value: /\S+@\S+\.\S+/, message: "Formato de correo inválido" }
+            required: 'Este campo es obligatorio',
+            pattern: { value: /\S+@\S+\.\S+/, message: 'Formato de correo inválido' },
           }}
           render={({ field: { onChange, value }, fieldState: { error } }) => (
             <View style={styles.fieldContainer}>
@@ -98,7 +121,7 @@ export default function RegisterUserScreen() {
         <Controller
           control={control}
           name="password"
-          rules={{ required: "Este campo es obligatorio", minLength: { value: 6, message: "Mínimo 6 caracteres" } }}
+          rules={{ required: 'Este campo es obligatorio', minLength: { value: 6, message: 'Mínimo 6 caracteres' } }}
           render={({ field: { onChange, value }, fieldState: { error } }) => (
             <View style={styles.fieldContainer}>
               <Text style={[styles.label, error && styles.labelError]}>Contraseña</Text>
@@ -125,8 +148,8 @@ export default function RegisterUserScreen() {
           control={control}
           name="confirmPassword"
           rules={{
-            required: "Este campo es obligatorio",
-            validate: (value: string) => value === password || "Las contraseñas no coinciden"
+            required: 'Este campo es obligatorio',
+            validate: (value: string) => value === password || 'Las contraseñas no coinciden',
           }}
           render={({ field: { onChange, value }, fieldState: { error } }) => (
             <View style={styles.fieldContainer}>
@@ -150,8 +173,16 @@ export default function RegisterUserScreen() {
           )}
         />
 
-        <TouchableOpacity style={styles.button} onPress={handleSubmit(onSubmit)} activeOpacity={0.85}>
-          <Text style={styles.buttonText}>Registrarse</Text>
+        <TouchableOpacity
+          style={[styles.button, submitting && styles.buttonDisabled]}
+          onPress={handleSubmit(onSubmit)}
+          activeOpacity={0.85}
+          disabled={submitting}>
+          {submitting ? (
+            <ActivityIndicator color="#fff" />
+          ) : (
+            <Text style={styles.buttonText}>Registrarse</Text>
+          )}
         </TouchableOpacity>
 
         <View style={styles.separatorContainer}>
@@ -227,6 +258,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginTop: 8,
     elevation: 6,
+  },
+  buttonDisabled: {
+    opacity: 0.7,
   },
   buttonText: { color: '#fff', fontWeight: 'bold', fontSize: 16 },
   separatorContainer: { flexDirection: 'row', alignItems: 'center', marginVertical: 20 },

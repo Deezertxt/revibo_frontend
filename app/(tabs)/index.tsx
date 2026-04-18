@@ -2,30 +2,31 @@ import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { Image } from 'expo-image';
 import * as Location from 'expo-location';
 import { useRouter } from 'expo-router';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ActivityIndicator,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
+    ActivityIndicator,
+    Pressable,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TextInput,
+    View,
 } from 'react-native';
-import MapView, { Marker, Region } from 'react-native-maps';
+import MapView, { Marker, Polyline, Region } from 'react-native-maps';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import {
-  ConnectivityError,
-  fetchActiveIncidents,
+    ConnectivityError,
+    fetchActiveIncidents,
 } from '@/features/incidents/incidents.service';
 import {
-  INCIDENT_SEVERITY_LABELS,
-  INCIDENT_STATUS_LABELS,
-  INCIDENT_TYPE_COLORS,
-  INCIDENT_TYPE_LABELS,
-  Incident,
-  IncidentType,
+    INCIDENT_SEVERITY_LABELS,
+    INCIDENT_STATUS_LABELS,
+    INCIDENT_TYPES,
+    INCIDENT_TYPE_COLORS,
+    INCIDENT_TYPE_LABELS,
+    Incident,
+    IncidentType,
 } from '@/features/incidents/types';
 import { getSavedMapRegion, setSavedMapRegion } from '@/features/map/map-view-state';
 
@@ -213,16 +214,17 @@ export default function MapHomeScreen() {
   }, []);
 
   const incidentCounts = useMemo(() => {
+    const initialCounts = INCIDENT_TYPES.reduce((accumulator, type) => {
+      accumulator[type] = 0;
+      return accumulator;
+    }, {} as Record<IncidentType, number>);
+
     return incidents.reduce(
       (accumulator, incident) => {
         accumulator[incident.type] += 1;
         return accumulator;
       },
-      {
-        accidente: 0,
-        bloqueo: 0,
-        mantenimiento: 0,
-      }
+      initialCounts
     );
   }, [incidents]);
 
@@ -250,10 +252,7 @@ export default function MapHomeScreen() {
     hasAppliedInitialFitRef.current = true;
 
     mapRef.current.fitToCoordinates(
-      incidents.map((incident) => ({
-        latitude: incident.latitude,
-        longitude: incident.longitude,
-      })),
+      incidents.flatMap((incident) => incident.mapCoordinates),
       {
         edgePadding: {
           top: 120,
@@ -295,10 +294,7 @@ export default function MapHomeScreen() {
     }
 
     mapRef.current.fitToCoordinates(
-      filteredIncidents.map((incident) => ({
-        latitude: incident.latitude,
-        longitude: incident.longitude,
-      })),
+      filteredIncidents.flatMap((incident) => incident.mapCoordinates),
       {
         edgePadding: {
           top: 120,
@@ -331,24 +327,15 @@ export default function MapHomeScreen() {
             active={selectedFilter === 'todos'}
             onPress={() => setSelectedFilter('todos')}
           />
-          <FilterChip
-            label={INCIDENT_TYPE_LABELS.accidente}
-            count={incidentCounts.accidente}
-            active={selectedFilter === 'accidente'}
-            onPress={() => setSelectedFilter('accidente')}
-          />
-          <FilterChip
-            label={INCIDENT_TYPE_LABELS.bloqueo}
-            count={incidentCounts.bloqueo}
-            active={selectedFilter === 'bloqueo'}
-            onPress={() => setSelectedFilter('bloqueo')}
-          />
-          <FilterChip
-            label={INCIDENT_TYPE_LABELS.mantenimiento}
-            count={incidentCounts.mantenimiento}
-            active={selectedFilter === 'mantenimiento'}
-            onPress={() => setSelectedFilter('mantenimiento')}
-          />
+          {INCIDENT_TYPES.map((type) => (
+            <FilterChip
+              key={type}
+              label={INCIDENT_TYPE_LABELS[type]}
+              count={incidentCounts[type]}
+              active={selectedFilter === type}
+              onPress={() => setSelectedFilter(type)}
+            />
+          ))}
         </ScrollView>
       </View>
 
@@ -364,16 +351,41 @@ export default function MapHomeScreen() {
         rotateEnabled
         pitchEnabled
         onRegionChangeComplete={(region) => setSavedMapRegion(region)}>
-        {filteredIncidents.map((incident) => (
-          <Marker
-            key={incident.id}
-            coordinate={{ latitude: incident.latitude, longitude: incident.longitude }}
-            pinColor={INCIDENT_TYPE_COLORS[incident.type]}
-            title={incident.title}
-            description={incident.description}
-            onPress={() => openIncidentDetail(incident)}
-          />
-        ))}
+        {filteredIncidents.map((incident) => {
+          if (incident.geometryType === 'Point') {
+            return (
+              <Marker
+                key={incident.id}
+                coordinate={{ latitude: incident.latitude, longitude: incident.longitude }}
+                pinColor={INCIDENT_TYPE_COLORS[incident.type]}
+                title={incident.title}
+                description={incident.description}
+                onPress={() => openIncidentDetail(incident)}
+              />
+            );
+          }
+
+          return (
+            <Fragment key={incident.id}>
+              <Polyline
+                key={`${incident.id}-line`}
+                coordinates={incident.mapCoordinates}
+                strokeColor={INCIDENT_TYPE_COLORS[incident.type]}
+                strokeWidth={5}
+                tappable
+                onPress={() => openIncidentDetail(incident)}
+              />
+              <Marker
+                key={`${incident.id}-center`}
+                coordinate={{ latitude: incident.latitude, longitude: incident.longitude }}
+                pinColor={INCIDENT_TYPE_COLORS[incident.type]}
+                title={incident.title}
+                description={incident.description}
+                onPress={() => openIncidentDetail(incident)}
+              />
+            </Fragment>
+          );
+        })}
       </MapView>
 
       <Pressable
@@ -437,7 +449,7 @@ export default function MapHomeScreen() {
             contentContainerStyle={styles.detailSheetContent}>
             <View style={styles.sheetHeaderRow}>
               <View style={styles.typeBadge}>
-                <Text style={styles.typeBadgeText}>{INCIDENT_TYPE_LABELS[selectedIncident.type].slice(0, -1)}</Text>
+                <Text style={styles.typeBadgeText}>{INCIDENT_TYPE_LABELS[selectedIncident.type]}</Text>
               </View>
               <Text style={styles.relativeText}>{formatRelativeTime(selectedIncident.startAt)}</Text>
             </View>
@@ -563,9 +575,9 @@ function StatusChip({ text }: { text: string }) {
 
 function SeverityChip({ text, severity }: { text: string; severity: Incident['severity'] }) {
   const severityStyle =
-    severity === 'alta'
+    severity === 'Critico'
       ? styles.severityHigh
-      : severity === 'media'
+      : severity === 'Alto'
       ? styles.severityMedium
       : styles.severityLow;
 

@@ -1,25 +1,28 @@
 import { ThemedText } from '@/shared/components/themed-text';
 import { ThemedView } from '@/shared/components/themed-view';
-import { getIsRegistered } from '@/shared/store/authStore';
+import { getAuthSession } from '@/shared/store/authStore';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback } from 'react';
 import { StyleSheet } from 'react-native';
 
 export default function PerfilScreen() {
   const router = useRouter();
+  const session = getAuthSession();
 
   useFocusEffect(
     useCallback(() => {
-      if (!getIsRegistered()) {
+      if (!session.isRegistered) {
         router.push('/registro');
       }
-    }, [])
+    }, [router, session.isRegistered])
   );
 
   return (
     <ThemedView style={styles.container}>
       <ThemedText type="title">Perfil</ThemedText>
-      <ThemedText>Espacio reservado para HU futuras.</ThemedText>
+      <ThemedText>Sesión activa con backend real.</ThemedText>
+      <ThemedText type="defaultSemiBold">Usuario: {session.name ?? 'Sin nombre'}</ThemedText>
+      <ThemedText>Email: {session.email ?? 'Sin correo'}</ThemedText>
     </ThemedView>
   );
 }
