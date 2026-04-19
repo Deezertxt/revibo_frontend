@@ -24,8 +24,10 @@ export default function RegisterUserScreen() {
 
   const { control, handleSubmit, watch } = useForm<FormData>({
     defaultValues: { username: '', email: '', password: '', confirmPassword: '' },
+    mode: 'onChange',
+    reValidateMode: 'onChange',
   });
-
+  
   const password = watch("password");
 
   const onSubmit = async (data: FormData) => {
@@ -99,7 +101,7 @@ export default function RegisterUserScreen() {
           name="email"
           rules={{
             required: 'Este campo es obligatorio',
-            pattern: { value: /\S+@\S+\.\S+/, message: 'Formato de correo inválido' },
+            pattern: {value: /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/, message: 'Formato de correo inválido',},
           }}
           render={({ field: { onChange, value }, fieldState: { error } }) => (
             <View style={styles.fieldContainer}>
@@ -121,7 +123,11 @@ export default function RegisterUserScreen() {
         <Controller
           control={control}
           name="password"
-          rules={{ required: 'Este campo es obligatorio', minLength: { value: 6, message: 'Mínimo 6 caracteres' } }}
+          rules={{
+          validate: (v) =>
+          /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[\W_]).{8,}$/.test(v) ||
+          'Mínimo 8 caracteres con mayúscula, minúscula, número y símbolo',
+          }}
           render={({ field: { onChange, value }, fieldState: { error } }) => (
             <View style={styles.fieldContainer}>
               <Text style={[styles.label, error && styles.labelError]}>Contraseña</Text>
