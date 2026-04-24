@@ -1,10 +1,18 @@
-import { registerUser } from '@/features/auth/services/auth.service';
-import { setRegistered } from '@/shared/store/authStore';
-import { useRouter } from 'expo-router';
-import React, { useState } from 'react';
+import { registerUser } from "@/features/auth/services/auth.service";
+import { setRegistered } from "@/shared/store/authStore";
+import { useRouter } from "expo-router";
+import React, { useState } from "react";
 import { Controller, useForm } from "react-hook-form";
-import { ActivityIndicator, Alert, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
-import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
+import {
+  ActivityIndicator,
+  Alert,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from "react-native";
+import { KeyboardAwareScrollView } from "react-native-keyboard-aware-scroll-view";
 
 type FormData = {
   username: string;
@@ -13,8 +21,8 @@ type FormData = {
   confirmPassword: string;
 };
 
-const PRIMARY = '#5B3FD9';
-const ACCENT = '#7C63E8';
+const PRIMARY = "#5B3FD9";
+const ACCENT = "#7C63E8";
 
 export default function RegisterUserScreen() {
   const [showPass, setShowPass] = useState(false);
@@ -23,11 +31,16 @@ export default function RegisterUserScreen() {
   const router = useRouter();
 
   const { control, handleSubmit, watch } = useForm<FormData>({
-    defaultValues: { username: '', email: '', password: '', confirmPassword: '' },
-    mode: 'onChange',
-    reValidateMode: 'onChange',
+    defaultValues: {
+      username: "",
+      email: "",
+      password: "",
+      confirmPassword: "",
+    },
+    mode: "onChange",
+    reValidateMode: "onChange",
   });
-  
+
   const password = watch("password");
 
   const onSubmit = async (data: FormData) => {
@@ -47,12 +60,15 @@ export default function RegisterUserScreen() {
         email: result.user.correo,
       });
 
-      Alert.alert('¡Éxito!', 'Cuenta creada correctamente en el backend', [
-        { text: 'OK', onPress: () => router.replace('/(tabs)/perfil') },
+      Alert.alert("¡Éxito!", "Cuenta creada correctamente en el backend", [
+        { text: "OK", onPress: () => router.replace("/(tabs)/perfil") },
       ]);
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'No se pudo registrar el usuario.';
-      Alert.alert('Error', message);
+      const message =
+        error instanceof Error
+          ? error.message
+          : "No se pudo registrar el usuario.";
+      Alert.alert("Error", message);
     } finally {
       setSubmitting(false);
     }
@@ -79,10 +95,15 @@ export default function RegisterUserScreen() {
         <Controller
           control={control}
           name="username"
-          rules={{ required: "Este campo es obligatorio", minLength: { value: 4, message: "Mínimo 4 caracteres" } }}
+          rules={{
+            required: "Este campo es obligatorio",
+            minLength: { value: 4, message: "Mínimo 4 caracteres" },
+          }}
           render={({ field: { onChange, value }, fieldState: { error } }) => (
             <View style={styles.fieldContainer}>
-              <Text style={[styles.label, error && styles.labelError]}>Nombre de usuario</Text>
+              <Text style={[styles.label, error && styles.labelError]}>
+                Nombre de usuario
+              </Text>
               <TextInput
                 style={[styles.input, error && styles.inputError]}
                 placeholder="juan_perez"
@@ -100,12 +121,17 @@ export default function RegisterUserScreen() {
           control={control}
           name="email"
           rules={{
-            required: 'Este campo es obligatorio',
-            pattern: {value: /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/, message: 'Formato de correo inválido',},
+            required: "Este campo es obligatorio",
+            pattern: {
+              value: /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/,
+              message: "Formato de correo inválido",
+            },
           }}
           render={({ field: { onChange, value }, fieldState: { error } }) => (
             <View style={styles.fieldContainer}>
-              <Text style={[styles.label, error && styles.labelError]}>Correo electrónico</Text>
+              <Text style={[styles.label, error && styles.labelError]}>
+                Correo electrónico
+              </Text>
               <TextInput
                 style={[styles.input, error && styles.inputError]}
                 placeholder="usuario@correo.com"
@@ -124,13 +150,15 @@ export default function RegisterUserScreen() {
           control={control}
           name="password"
           rules={{
-          validate: (v) =>
-          /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[\W_]).{8,}$/.test(v) ||
-          'Mínimo 8 caracteres con mayúscula, minúscula, número y símbolo',
+            validate: (v) =>
+              /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[\W_]).{8,}$/.test(v) ||
+              "Mínimo 8 caracteres con mayúscula, minúscula, número y símbolo",
           }}
           render={({ field: { onChange, value }, fieldState: { error } }) => (
             <View style={styles.fieldContainer}>
-              <Text style={[styles.label, error && styles.labelError]}>Contraseña</Text>
+              <Text style={[styles.label, error && styles.labelError]}>
+                Contraseña
+              </Text>
               <View style={[styles.inputRow, error && styles.inputError]}>
                 <TextInput
                   style={styles.inputFlex}
@@ -142,7 +170,7 @@ export default function RegisterUserScreen() {
                   autoCapitalize="none"
                 />
                 <TouchableOpacity onPress={() => setShowPass(!showPass)}>
-                  <Text style={styles.eye}>{showPass ? '🙈' : '👁️'}</Text>
+                  <Text style={styles.eye}>{showPass ? "🙈" : "👁️"}</Text>
                 </TouchableOpacity>
               </View>
               {error && <Text style={styles.errorText}>{error.message}</Text>}
@@ -154,12 +182,15 @@ export default function RegisterUserScreen() {
           control={control}
           name="confirmPassword"
           rules={{
-            required: 'Este campo es obligatorio',
-            validate: (value: string) => value === password || 'Las contraseñas no coinciden',
+            required: "Este campo es obligatorio",
+            validate: (value: string) =>
+              value === password || "Las contraseñas no coinciden",
           }}
           render={({ field: { onChange, value }, fieldState: { error } }) => (
             <View style={styles.fieldContainer}>
-              <Text style={[styles.label, error && styles.labelError]}>Confirmar contraseña</Text>
+              <Text style={[styles.label, error && styles.labelError]}>
+                Confirmar contraseña
+              </Text>
               <View style={[styles.inputRow, error && styles.inputError]}>
                 <TextInput
                   style={styles.inputFlex}
@@ -171,7 +202,7 @@ export default function RegisterUserScreen() {
                   autoCapitalize="none"
                 />
                 <TouchableOpacity onPress={() => setShowConfirm(!showConfirm)}>
-                  <Text style={styles.eye}>{showConfirm ? '🙈' : '👁️'}</Text>
+                  <Text style={styles.eye}>{showConfirm ? "🙈" : "👁️"}</Text>
                 </TouchableOpacity>
               </View>
               {error && <Text style={styles.errorText}>{error.message}</Text>}
@@ -183,7 +214,8 @@ export default function RegisterUserScreen() {
           style={[styles.button, submitting && styles.buttonDisabled]}
           onPress={handleSubmit(onSubmit)}
           activeOpacity={0.85}
-          disabled={submitting}>
+          disabled={submitting}
+        >
           {submitting ? (
             <ActivityIndicator color="#fff" />
           ) : (
@@ -197,9 +229,12 @@ export default function RegisterUserScreen() {
           <View style={styles.separatorLine} />
         </View>
 
-        <Text style={styles.link}>
-          ¿Ya tienes cuenta? <Text style={styles.linkBold}>Inicia sesión</Text>
-        </Text>
+        <TouchableOpacity onPress={() => router.push("/login")}>
+          <Text style={styles.link}>
+            ¿Ya tienes cuenta?{" "}
+            <Text style={styles.linkBold}>Inicia sesión</Text>
+          </Text>
+        </TouchableOpacity>
       </View>
     </KeyboardAwareScrollView>
   );
@@ -207,25 +242,25 @@ export default function RegisterUserScreen() {
 
 const styles = StyleSheet.create({
   header: {
-    alignItems: 'center',
+    alignItems: "center",
     paddingTop: 35,
     paddingBottom: 20,
     paddingHorizontal: 25,
   },
   iconBox: {
-    backgroundColor: 'rgba(255,255,255,0.2)',
+    backgroundColor: "rgba(255,255,255,0.2)",
     width: 65,
     height: 65,
     borderRadius: 18,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
     marginBottom: 18,
   },
   iconText: { fontSize: 30 },
-  title: { color: '#fff', fontSize: 28, fontWeight: 'bold', marginBottom: 8 },
-  subtitle: { color: 'rgba(255,255,255,0.8)', fontSize: 14 },
+  title: { color: "#fff", fontSize: 28, fontWeight: "bold", marginBottom: 8 },
+  subtitle: { color: "rgba(255,255,255,0.8)", fontSize: 14 },
   card: {
-    backgroundColor: '#F7F7FC',
+    backgroundColor: "#F7F7FC",
     borderTopLeftRadius: 30,
     borderTopRightRadius: 30,
     padding: 28,
@@ -233,45 +268,55 @@ const styles = StyleSheet.create({
     flexGrow: 1,
   },
   fieldContainer: { marginBottom: 18 },
-  label: { color: ACCENT, fontWeight: '600', fontSize: 13, marginBottom: 6 },
-  labelError: { color: '#E53935' },
+  label: { color: ACCENT, fontWeight: "600", fontSize: 13, marginBottom: 6 },
+  labelError: { color: "#E53935" },
   input: {
-    backgroundColor: '#fff',
+    backgroundColor: "#fff",
     borderRadius: 12,
     borderWidth: 1.5,
-    borderColor: '#E8E8F0',
+    borderColor: "#E8E8F0",
     padding: 14,
     fontSize: 15,
-    color: '#1E1E2E',
+    color: "#1E1E2E",
   },
   inputRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#fff',
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#fff",
     borderRadius: 12,
     borderWidth: 1.5,
-    borderColor: '#E8E8F0',
+    borderColor: "#E8E8F0",
     paddingRight: 12,
   },
-  inputFlex: { flex: 1, padding: 14, fontSize: 15, color: '#1E1E2E' },
-  inputError: { borderColor: '#E53935', backgroundColor: '#FFF5F5' },
+  inputFlex: { flex: 1, padding: 14, fontSize: 15, color: "#1E1E2E" },
+  inputError: { borderColor: "#E53935", backgroundColor: "#FFF5F5" },
   eye: { fontSize: 16 },
-  errorText: { color: '#E53935', fontSize: 12, marginTop: 5 },
+  errorText: { color: "#E53935", fontSize: 12, marginTop: 5 },
   button: {
     backgroundColor: PRIMARY,
     padding: 17,
     borderRadius: 14,
-    alignItems: 'center',
+    alignItems: "center",
     marginTop: 8,
     elevation: 6,
   },
   buttonDisabled: {
     opacity: 0.7,
   },
-  buttonText: { color: '#fff', fontWeight: 'bold', fontSize: 16 },
-  separatorContainer: { flexDirection: 'row', alignItems: 'center', marginVertical: 20 },
-  separatorLine: { flex: 1, height: 1, backgroundColor: '#E0E0E8' },
-  separatorDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#C0C0D0', marginHorizontal: 10 },
-  link: { color: '#888', textAlign: 'center', fontSize: 14 },
-  linkBold: { color: ACCENT, fontWeight: 'bold' },
+  buttonText: { color: "#fff", fontWeight: "bold", fontSize: 16 },
+  separatorContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginVertical: 20,
+  },
+  separatorLine: { flex: 1, height: 1, backgroundColor: "#E0E0E8" },
+  separatorDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: "#C0C0D0",
+    marginHorizontal: 10,
+  },
+  link: { color: "#888", textAlign: "center", fontSize: 14 },
+  linkBold: { color: ACCENT, fontWeight: "bold" },
 });
