@@ -157,23 +157,35 @@ export default function MapHomeScreen() {
 
   useEffect(() => {
     let locationSubscription: Location.LocationSubscription | null = null;
+    let cancelled = false;
 
     const loadMapData = async () => {
       setLoading(true);
       setInfoMessage(null);
 
       try {
-        const [activeIncidents, locationPermission] = await Promise.all([
-          fetchActiveIncidents(),
-          Location.requestForegroundPermissionsAsync(),
-        ]);
+        const activeIncidents = await fetchActiveIncidents();
+
+        if (cancelled) {
+          return;
+        }
 
         setIncidents(activeIncidents);
 
-        if (locationPermission.status === 'granted') {
+        const locationPermission = await Location.requestForegroundPermissionsAsync();
+
+        if (cancelled || locationPermission.status !== 'granted') {
+          return;
+        }
+
+        try {
           const position = await Location.getCurrentPositionAsync({
             accuracy: Location.Accuracy.Balanced,
           });
+
+          if (cancelled) {
+            return;
+          }
 
           setUserCoordinate({
             latitude: position.coords.latitude,
@@ -193,22 +205,29 @@ export default function MapHomeScreen() {
               });
             }
           );
+        } catch {
+          if (!cancelled) {
+            setInfoMessage('No se pudo obtener tu ubicacion ahora. Intenta nuevamente.');
+          }
         }
       } catch (error) {
         if (error instanceof ConnectivityError) {
           setInfoMessage(error.message);
           setIncidents([]);
         } else {
-          setInfoMessage('No fue posible cargar los reportes en este momento.');
+          setInfoMessage(error instanceof Error ? error.message : 'No fue posible cargar los reportes en este momento.');
         }
       } finally {
-        setLoading(false);
+        if (!cancelled) {
+          setLoading(false);
+        }
       }
     };
 
     loadMapData();
 
     return () => {
+      cancelled = true;
       locationSubscription?.remove();
     };
   }, []);

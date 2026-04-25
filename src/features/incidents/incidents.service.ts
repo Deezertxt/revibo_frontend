@@ -1,12 +1,11 @@
 import NetInfo from '@react-native-community/netinfo';
 
 import type { Incident } from '@/features/incidents/types';
-import { getAccessToken } from '@/shared/store/authStore';
 
 const DEFAULT_API_URL = 'http://localhost:8000/api/v1';
 const API_URL = (process.env.EXPO_PUBLIC_API_URL ?? DEFAULT_API_URL).replace(/\/$/, '');
-const API_TOKEN = process.env.EXPO_PUBLIC_API_TOKEN;
 const COORDINATE_ORDER = process.env.EXPO_PUBLIC_COORDINATE_ORDER ?? 'lat_lng';
+const REQUEST_TIMEOUT_MS = 12000;
 
 type ApiGeometry = {
   type: 'Point' | 'LineString';
@@ -125,30 +124,44 @@ function mapApiReportToIncident(report: ApiReport): Incident {
   };
 }
 
+function tryMapApiReportToIncident(report: ApiReport): Incident | null {
+  try {
+    return mapApiReportToIncident(report);
+  } catch {
+    return null;
+  }
+}
+
 async function requestJson<T>(path: string): Promise<T> {
-  const sessionToken = getAccessToken();
-  const tokenToUse = sessionToken ?? API_TOKEN;
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 
-  if (!tokenToUse) {
-    throw new Error('Falta EXPO_PUBLIC_API_TOKEN para consultar reportes protegidos.');
+  try {
+    const response = await fetch(`${API_URL}${path}`, {
+      method: 'GET',
+      headers: {
+        Accept: 'application/json',
+      },
+      signal: controller.signal,
+    });
+
+    const payload = await response.json().catch(() => null);
+
+    if (!response.ok) {
+      const message = payload?.message ?? `Error HTTP ${response.status}`;
+      throw new Error(message);
+    }
+
+    return payload as T;
+  } catch (error) {
+    if (error instanceof DOMException && error.name === 'AbortError') {
+      throw new Error('La consulta de reportes demoro demasiado.');
+    }
+
+    throw error;
+  } finally {
+    clearTimeout(timeoutId);
   }
-
-  const response = await fetch(`${API_URL}${path}`, {
-    method: 'GET',
-    headers: {
-      Accept: 'application/json',
-      Authorization: `Bearer ${tokenToUse}`,
-    },
-  });
-
-  const payload = await response.json().catch(() => null);
-
-  if (!response.ok) {
-    const message = payload?.message ?? `Error HTTP ${response.status}`;
-    throw new Error(message);
-  }
-
-  return payload as T;
 }
 
 export async function fetchActiveIncidents(): Promise<Incident[]> {
@@ -159,7 +172,15 @@ export async function fetchActiveIncidents(): Promise<Incident[]> {
   }
 
   const payload = await requestJson<ApiListResponse>('/reporte');
-  return payload.data.map(mapApiReportToIncident);
+  const incidents = payload.data
+    .map(tryMapApiReportToIncident)
+    .filter((incident): incident is Incident => incident !== null);
+
+  if (incidents.length === 0 && payload.data.length > 0) {
+    throw new Error('Los reportes recibidos no tienen geometria valida.');
+  }
+
+  return incidents;
 }
 
 export async function fetchIncidentDetailById(id: string): Promise<Incident> {
