@@ -2,7 +2,11 @@ import NetInfo from '@react-native-community/netinfo';
 
 import type { Incident } from '@/features/incidents/types';
 
-const DEFAULT_API_URL = 'http://localhost:8000/api/v1';
+import { Platform } from 'react-native';
+
+const DEFAULT_API_URL = Platform.OS === 'android'
+  ? 'http://10.0.2.2:8000/api/v1'
+  : 'http://localhost:8000/api/v1';
 const API_URL = (process.env.EXPO_PUBLIC_API_URL ?? DEFAULT_API_URL).replace(/\/$/, '');
 const COORDINATE_ORDER = process.env.EXPO_PUBLIC_COORDINATE_ORDER ?? 'lat_lng';
 const REQUEST_TIMEOUT_MS = 12000;
@@ -154,7 +158,7 @@ async function requestJson<T>(path: string): Promise<T> {
 
     return payload as T;
   } catch (error) {
-    if (error instanceof DOMException && error.name === 'AbortError') {
+    if (error instanceof Error && error.name === 'AbortError') {
       throw new Error('La consulta de reportes demoro demasiado.');
     }
 
