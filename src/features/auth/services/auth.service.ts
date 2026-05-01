@@ -37,7 +37,7 @@ export type AuthResult = {
   accessToken: string;
 };
 
-// login
+// --- Login ---
 
 export async function loginUser(payload: LoginPayload): Promise<AuthResult> {
   const response = await fetch(`${API_URL}/login`, {
@@ -70,6 +70,8 @@ export async function loginUser(payload: LoginPayload): Promise<AuthResult> {
     accessToken: responseBody.access_token,
   };
 }
+
+// --- Register ---
 
 export async function registerUser(
   payload: RegisterPayload,
@@ -105,21 +107,26 @@ export async function registerUser(
   };
 }
 
+// --- Logout (Cambios confirmados) ---
+
 export async function logoutUser(token: string): Promise<string> {
   const response = await fetch(`${API_URL}/logout`, {
     method: "POST",
     headers: {
       Accept: "application/json",
       "Content-Type": "application/json",
+      // Es vital enviar el token para que el backend invalide la sesión
       Authorization: `Bearer ${token}`,
     },
   });
 
   const responseBody = await response.json().catch(() => null);
 
+  // Si el servidor responde 401 o 500, lanzamos error para manejarlo en la UI
   if (!response.ok) {
-    throw new Error(responseBody?.message ?? "Error al cerrar sesión.");
+    const errorMsg = responseBody?.message ?? "Error al cerrar sesión.";
+    throw new Error(errorMsg);
   }
 
-  return responseBody?.message ?? "Sesión cerrada";
+  return responseBody?.message ?? "Sesión cerrada correctamente";
 }

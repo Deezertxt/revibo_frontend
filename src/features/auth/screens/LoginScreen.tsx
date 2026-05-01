@@ -38,6 +38,7 @@ export default function LoginFormulario() {
         contrasena: password,
       });
 
+      // 1. Guardamos la sesión en el store
       setRegistered({
         accessToken: resultado.accessToken,
         name: resultado.user.nombre,
@@ -45,16 +46,27 @@ export default function LoginFormulario() {
         rol: resultado.user.rol || "usuario",
       });
 
-      // ROL
       const rolUser = resultado.user.rol || "usuario";
       const rolFormateado = rolUser.charAt(0).toUpperCase() + rolUser.slice(1);
 
+      // 2. Alerta con redirección basada en el ROL
       Alert.alert(
         `Bienvenido ${rolFormateado}`,
         `Hola ${resultado.user.nombre}, has iniciado sesión correctamente.`,
+        [
+          {
+            text: "Continuar",
+            onPress: () => {
+              // Si es admin, lo mandamos a la pestaña de admin, si no, al mapa (tabs)
+              if (rolUser.toLowerCase() === "admin") {
+                router.replace("/(tabs)/admin");
+              } else {
+                router.replace("/(tabs)");
+              }
+            },
+          },
+        ],
       );
-
-      // router.replace("/(tabs)");
     } catch (error: any) {
       Alert.alert("Error", error.message || "Credenciales incorrectas");
     } finally {
@@ -73,7 +85,7 @@ export default function LoginFormulario() {
           bounces={false}
           showsVerticalScrollIndicator={false}
         >
-          {/* SECCIÓN SUPERIOR*/}
+          {/* SECCIÓN SUPERIOR */}
           <View
             style={{
               paddingHorizontal: 35,
@@ -107,7 +119,7 @@ export default function LoginFormulario() {
               paddingBottom: insets.bottom + 20,
             }}
           >
-            {/*  Email */}
+            {/* Email */}
             <View style={{ marginBottom: 20 }}>
               <Text
                 style={{
@@ -165,8 +177,8 @@ export default function LoginFormulario() {
                 onChangeText={setPassword}
               />
             </View>
+
             <View>
-              {/* Botón */}
               <TouchableOpacity
                 onPress={handleLogin}
                 disabled={cargando}
@@ -178,7 +190,7 @@ export default function LoginFormulario() {
                   alignItems: "center",
                   justifyContent: "center",
                   marginBottom: 30,
-                  marginTop: 40,
+                  marginTop: 10,
                 }}
               >
                 {cargando ? (
@@ -203,7 +215,6 @@ export default function LoginFormulario() {
               <View
                 style={{ flex: 1, height: 1, backgroundColor: "#E0E0E0" }}
               />
-
               <View
                 style={{
                   width: 6,
@@ -213,7 +224,6 @@ export default function LoginFormulario() {
                   marginHorizontal: 15,
                 }}
               />
-
               <View
                 style={{ flex: 1, height: 1, backgroundColor: "#E0E0E0" }}
               />

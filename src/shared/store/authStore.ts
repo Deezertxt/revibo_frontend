@@ -33,7 +33,7 @@ export const getAccessToken = () => authSession.accessToken;
 
 export const getAuthSession = () => authSession;
 
-export const clearAuthSession = () => {
+export const logout = () => {
   authSession = {
     isRegistered: false,
     accessToken: null,
