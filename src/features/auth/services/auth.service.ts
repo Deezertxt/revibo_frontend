@@ -1,8 +1,20 @@
-const DEFAULT_API_URL = "http://192.168.1.7:8000/api/v1";
+import { Platform } from "react-native";
+
+const DEFAULT_API_URL =
+  Platform.OS === "android"
+    ? "http://10.0.2.2:8000/api/v1"
+    : "http://localhost:8000/api/v1";
 const API_URL = (process.env.EXPO_PUBLIC_API_URL ?? DEFAULT_API_URL).replace(
   /\/$/,
   "",
 );
+
+type RegisterPayload = {
+  nombre: string;
+  correo: string;
+  contrasena: string;
+  confirmacion_contrasena: string;
+};
 
 type AuthUser = {
   id_usuario: string;
@@ -15,13 +27,6 @@ type AuthUser = {
 type LoginPayload = {
   correo: string;
   contrasena: string;
-};
-
-type RegisterPayload = {
-  nombre: string;
-  correo: string;
-  contrasena: string;
-  confirmacion_contrasena: string;
 };
 
 type AuthResponse = {
@@ -37,7 +42,7 @@ export type AuthResult = {
   accessToken: string;
 };
 
-// --- Login ---
+//Login
 
 export async function loginUser(payload: LoginPayload): Promise<AuthResult> {
   const response = await fetch(`${API_URL}/login`, {
@@ -71,7 +76,7 @@ export async function loginUser(payload: LoginPayload): Promise<AuthResult> {
   };
 }
 
-// --- Register ---
+// Registrar
 
 export async function registerUser(
   payload: RegisterPayload,
@@ -107,7 +112,7 @@ export async function registerUser(
   };
 }
 
-// --- Logout (Cambios confirmados) ---
+// Logout
 
 export async function logoutUser(token: string): Promise<string> {
   const response = await fetch(`${API_URL}/logout`, {
@@ -115,14 +120,13 @@ export async function logoutUser(token: string): Promise<string> {
     headers: {
       Accept: "application/json",
       "Content-Type": "application/json",
-      // Es vital enviar el token para que el backend invalide la sesión
       Authorization: `Bearer ${token}`,
     },
   });
 
   const responseBody = await response.json().catch(() => null);
 
-  // Si el servidor responde 401 o 500, lanzamos error para manejarlo en la UI
+  // Si el servidor responde 401 o 500
   if (!response.ok) {
     const errorMsg = responseBody?.message ?? "Error al cerrar sesión.";
     throw new Error(errorMsg);

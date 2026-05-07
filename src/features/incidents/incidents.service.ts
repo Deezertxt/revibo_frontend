@@ -1,14 +1,22 @@
-import NetInfo from '@react-native-community/netinfo';
+import NetInfo from "@react-native-community/netinfo";
 
-import type { Incident } from '@/features/incidents/types';
+import type { Incident } from "@/features/incidents/types";
 
-const DEFAULT_API_URL = 'http://localhost:8000/api/v1';
-const API_URL = (process.env.EXPO_PUBLIC_API_URL ?? DEFAULT_API_URL).replace(/\/$/, '');
-const COORDINATE_ORDER = process.env.EXPO_PUBLIC_COORDINATE_ORDER ?? 'lat_lng';
+import { Platform } from "react-native";
+
+const DEFAULT_API_URL =
+  Platform.OS === "android"
+    ? "http://10.0.2.2:8000/api/v1"
+    : "http://localhost:8000/api/v1";
+const API_URL = (process.env.EXPO_PUBLIC_API_URL ?? DEFAULT_API_URL).replace(
+  /\/$/,
+  "",
+);
+const COORDINATE_ORDER = process.env.EXPO_PUBLIC_COORDINATE_ORDER ?? "lat_lng";
 const REQUEST_TIMEOUT_MS = 12000;
 
 type ApiGeometry = {
-  type: 'Point' | 'LineString';
+  type: "Point" | "LineString";
   coordinates: number[] | number[][];
 };
 
@@ -17,8 +25,8 @@ type ApiReport = {
   titulo: string;
   descripcion: string;
   institucion?: string;
-  tipo_reporte: Incident['type'];
-  gravedad_reporte: Incident['severity'];
+  tipo_reporte: Incident["type"];
+  gravedad_reporte: Incident["severity"];
   geom: ApiGeometry | null;
   estado: boolean;
   fecha_inicio: string;
@@ -39,21 +47,26 @@ type ApiDetailResponse = {
 export class ConnectivityError extends Error {
   constructor(message: string) {
     super(message);
-    this.name = 'ConnectivityError';
+    this.name = "ConnectivityError";
   }
 }
 
-function parseCoordinatePair(pair: number[]): { latitude: number; longitude: number } {
+function parseCoordinatePair(pair: number[]): {
+  latitude: number;
+  longitude: number;
+} {
   const [first, second] = pair;
 
-  if (COORDINATE_ORDER === 'lng_lat') {
+  if (COORDINATE_ORDER === "lng_lat") {
     return { latitude: second, longitude: first };
   }
 
   return { latitude: first, longitude: second };
 }
 
-function normalizeDate(dateValue: string | null | undefined): string | undefined {
+function normalizeDate(
+  dateValue: string | null | undefined,
+): string | undefined {
   if (!dateValue) {
     return undefined;
   }
@@ -78,28 +91,32 @@ function mapApiReportToIncident(report: ApiReport): Incident {
   const geometry = report.geom;
 
   if (!geometry) {
-    throw new Error('El reporte no contiene geometria.');
+    throw new Error("El reporte no contiene geometria.");
   }
 
-  let mapCoordinates: Incident['mapCoordinates'] = [];
+  let mapCoordinates: Incident["mapCoordinates"] = [];
 
-  if (geometry.type === 'Point') {
-    const point = Array.isArray(geometry.coordinates) ? geometry.coordinates as number[] : [];
+  if (geometry.type === "Point") {
+    const point = Array.isArray(geometry.coordinates)
+      ? (geometry.coordinates as number[])
+      : [];
 
     if (point.length < 2) {
-      throw new Error('El punto del reporte es invalido.');
+      throw new Error("El punto del reporte es invalido.");
     }
 
     mapCoordinates = [parseCoordinatePair(point)];
   } else {
-    const points = Array.isArray(geometry.coordinates) ? geometry.coordinates as number[][] : [];
+    const points = Array.isArray(geometry.coordinates)
+      ? (geometry.coordinates as number[][])
+      : [];
 
     mapCoordinates = points
       .filter((point) => Array.isArray(point) && point.length >= 2)
       .map((point) => parseCoordinatePair(point));
 
     if (mapCoordinates.length === 0) {
-      throw new Error('La linea del reporte es invalida.');
+      throw new Error("La linea del reporte es invalida.");
     }
   }
 
@@ -110,10 +127,10 @@ function mapApiReportToIncident(report: ApiReport): Incident {
     title: report.titulo,
     description: report.descripcion,
     type: report.tipo_reporte,
-    status: report.estado ? 'activo' : 'resuelto',
+    status: report.estado ? "activo" : "resuelto",
     severity: report.gravedad_reporte,
-    authority: report.institucion ?? 'Administracion',
-    locationText: `${report.institucion ?? 'Administracion'} · ${report.tipo_reporte}`,
+    authority: report.institucion ?? "Administracion",
+    locationText: `${report.institucion ?? "Administracion"} · ${report.tipo_reporte}`,
     geometryType: geometry.type,
     mapCoordinates,
     latitude: primaryCoordinate.latitude,
@@ -138,9 +155,9 @@ async function requestJson<T>(path: string): Promise<T> {
 
   try {
     const response = await fetch(`${API_URL}${path}`, {
-      method: 'GET',
+      method: "GET",
       headers: {
-        Accept: 'application/json',
+        Accept: "application/json",
       },
       signal: controller.signal,
     });
@@ -154,8 +171,8 @@ async function requestJson<T>(path: string): Promise<T> {
 
     return payload as T;
   } catch (error) {
-    if (error instanceof DOMException && error.name === 'AbortError') {
-      throw new Error('La consulta de reportes demoro demasiado.');
+    if (error instanceof Error && error.name === "AbortError") {
+      throw new Error("La consulta de reportes demoro demasiado.");
     }
 
     throw error;
@@ -168,16 +185,18 @@ export async function fetchActiveIncidents(): Promise<Incident[]> {
   const netState = await NetInfo.fetch();
 
   if (!netState.isConnected || netState.isInternetReachable === false) {
-    throw new ConnectivityError('Sin conexion a internet. Mostrando mapa sin reportes.');
+    throw new ConnectivityError(
+      "Sin conexion a internet. Mostrando mapa sin reportes.",
+    );
   }
 
-  const payload = await requestJson<ApiListResponse>('/reporte');
+  const payload = await requestJson<ApiListResponse>("/reporte");
   const incidents = payload.data
     .map(tryMapApiReportToIncident)
     .filter((incident): incident is Incident => incident !== null);
 
   if (incidents.length === 0 && payload.data.length > 0) {
-    throw new Error('Los reportes recibidos no tienen geometria valida.');
+    throw new Error("Los reportes recibidos no tienen geometria valida.");
   }
 
   return incidents;
@@ -187,7 +206,9 @@ export async function fetchIncidentDetailById(id: string): Promise<Incident> {
   const netState = await NetInfo.fetch();
 
   if (!netState.isConnected || netState.isInternetReachable === false) {
-    throw new ConnectivityError('Sin conexion. No se pudo cargar el detalle del reporte.');
+    throw new ConnectivityError(
+      "Sin conexion. No se pudo cargar el detalle del reporte.",
+    );
   }
 
   const payload = await requestJson<ApiDetailResponse>(`/reporte/${id}`);
