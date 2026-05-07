@@ -10,7 +10,6 @@ import {
   View,
 } from "react-native";
 
-// Importamos el servicio de logout
 import { logoutUser } from "@/features/auth/services/auth.service";
 
 export default function PerfilScreen() {
@@ -21,29 +20,22 @@ export default function PerfilScreen() {
   const handleLogout = async () => {
     setCargando(true);
     try {
-      // 1. Llamamos a la API enviando el token actual
+      // token actual
       if (session.accessToken) {
         await logoutUser(session.accessToken);
       }
     } catch (error: any) {
-      // Si falla la API (ej. token expirado), igual procedemos a limpiar localmente
       console.log("Error al cerrar sesión en el servidor:", error.message);
     } finally {
-      // 2. Limpiamos los datos del store local (el "let" cambia a valores nulos)
       logout();
       setCargando(false);
 
-      /**
-       * 3. REDIRECCIÓN CLAVE:
-       * Al usar router.replace("/(tabs)"), el hook usePathname() en el TabLayout
-       * detectará el cambio, volverá a leer el authStore y ocultará las pestañas
-       * de Admin/Reportar al instante.
-       */
+      //redirección
       router.replace("/(tabs)");
     }
   };
 
-  // VISTA DE ESTADO "INVITADO" (Usuario deslogueado)
+  // Usuario deslogueado y sin sesión
   if (!session.isRegistered) {
     return (
       <ThemedView style={styles.container}>
@@ -66,7 +58,7 @@ export default function PerfilScreen() {
     );
   }
 
-  // VISTA DE USUARIO REGISTRADO
+  // Usuario
   return (
     <ThemedView style={styles.container}>
       <View style={styles.header}>
