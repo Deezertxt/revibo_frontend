@@ -1,5 +1,6 @@
 import { HapticTab } from "@/shared/components/haptic-tab";
 import { getAuthSession } from "@/shared/store/authStore";
+import FontAwesome from "@expo/vector-icons/FontAwesome";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { Tabs, usePathname } from "expo-router";
 import { useEffect, useState } from "react";
@@ -56,22 +57,23 @@ export default function TabLayout() {
           ),
         }}
       />
-
-      {/* 3. REGISTRAR REPORTE 
+      {/* CREAR REPORTES */}
       <Tabs.Screen
-        name="crear-reporte"
+        name="crear_reportes"
         options={{
           title: "Reportar",
           tabBarIcon: ({ color }) => (
-            <MaterialIcons name="add-business" size={24} color={color} />
+            <FontAwesome name="pencil" size={24} color={color} />
           ),
-          // Corregido con el path completo para evitar error de tipos
+
           href:
-            rolActual === "admin" || rolActual === "moderador"
-              ? "/(tabs)/crear-reporte"
-              : null,
+            rolActual === "admin" ||
+            rolActual === "autoridad" ||
+            rolActual === "moderador"
+              ? "/(tabs)/crear_reportes"
+              : (null as any),
         }}
-      />*/}
+      />
 
       <Tabs.Screen
         name="rutas"
@@ -95,7 +97,6 @@ export default function TabLayout() {
               color={color}
             />
           ),
-          // Corregido con el path completo para evitar error de tipos
           href: rolActual === "admin" ? "/(tabs)/admin" : null,
         }}
       />
