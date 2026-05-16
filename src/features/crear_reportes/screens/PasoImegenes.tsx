@@ -20,7 +20,6 @@ export default function PasoImagenes() {
   const [loading, setLoading] = useState(false);
 
   const publicar = async () => {
-    // 1. Obtención del token desde tu authStore (el let manual)
     const token = getAccessToken();
 
     if (!token) {
@@ -31,7 +30,6 @@ export default function PasoImagenes() {
       return;
     }
 
-    // 2. Validación de seguridad: Evitar enviar geom vacío
     if (!store.geom || !store.geom.coordinates) {
       Alert.alert(
         "Falta ubicación",
@@ -42,18 +40,16 @@ export default function PasoImagenes() {
 
     setLoading(true);
 
-    // 3. Estructura del cuerpo según lo que espera tu API
     const body = {
       titulo: store.titulo,
       descripcion: store.descripcion,
       tipo_reporte: store.tipo_reporte || "",
       gravedad_reporte: store.gravedad_reporte || "",
-      geom: store.geom, // Formato GeoJSON: { type, coordinates }
-      url_imagen: [], // Vacío por ahora como pediste
+      geom: store.geom,
+      url_imagen: [],
     };
 
     try {
-      // 4. Llamada al servicio
       const res = await crearReporte(body, token);
 
       Alert.alert("¡Éxito!", res.message || "Reporte creado correctamente", [
@@ -63,7 +59,6 @@ export default function PasoImagenes() {
         },
       ]);
     } catch (e: any) {
-      // Manejo de errores y traducciones de la API
       let errorMsg = e.message || "No se pudo crear el reporte";
 
       if (errorMsg.includes("geom field is required")) {
@@ -75,6 +70,43 @@ export default function PasoImagenes() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const renderDetalleUbicacion = () => {
+    if (!store.geom || !store.geom.coordinates) {
+      return <Text style={styles.summaryValue}> No seleccionada</Text>;
+    }
+
+    const esPunto = store.geom.type === "Point";
+    const coords = store.geom.coordinates;
+
+    return (
+      <View style={styles.ubicacionDetalleContainer}>
+        <View style={styles.tipoUbicacionRow}>
+          <Ionicons
+            name={esPunto ? "pin" : "git-commit"}
+            size={16}
+            color={esPunto ? "#6347D1" : "#FF4763"}
+            style={{ marginRight: 6 }}
+          />
+          <Text
+            style={[
+              styles.tipoUbicacionText,
+              { color: esPunto ? "#6347D1" : "#FF4763" },
+            ]}
+          >
+            {esPunto ? "Punto Fijo" : "Tramo Vial"}
+          </Text>
+        </View>
+
+        <Text style={styles.direccionTextoDisplay} numberOfLines={2}>
+          {store.direccionTexto ||
+            (esPunto
+              ? `Lat: ${coords[1]?.toFixed(5)}, Lng: ${coords[0]?.toFixed(5)}`
+              : `Desde: ${coords[0][1]?.toFixed(4)}, ${coords[0][0]?.toFixed(4)}\nHasta: ${coords[1][1]?.toFixed(4)}, ${coords[1][0]?.toFixed(4)}`)}
+        </Text>
+      </View>
+    );
   };
 
   return (
@@ -137,15 +169,17 @@ export default function PasoImagenes() {
             </View>
           </View>
 
-          <View style={styles.summaryRow}>
-            <Text style={styles.summaryLabel}>Ubicación</Text>
-            <Text style={styles.summaryValue} numberOfLines={1}>
-              {store.geom?.type === "Point"
-                ? "📍 Punto exacto marcado"
-                : store.geom?.type === "LineString"
-                  ? "🛣️ Tramo seleccionado"
-                  : "No seleccionada"}
+          {/* Fila de Ubicación Optimizada */}
+          <View
+            style={[
+              styles.summaryRow,
+              { alignItems: "flex-start", borderBottomWidth: 0 },
+            ]}
+          >
+            <Text style={[styles.summaryLabel, { marginTop: 4 }]}>
+              Ubicación
             </Text>
+            {renderDetalleUbicacion()}
           </View>
         </View>
       </ScrollView>
@@ -289,5 +323,27 @@ const styles = StyleSheet.create({
     color: "white",
     fontSize: 18,
     fontWeight: "bold",
+  },
+  /* NUEVOS ESTILOS PARA LA DETECCION VISUAL DE UBICACION */
+  ubicacionDetalleContainer: {
+    flex: 2,
+    alignItems: "flex-end",
+  },
+  tipoUbicacionRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 4,
+  },
+  tipoUbicacionText: {
+    fontSize: 12,
+    fontWeight: "700",
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+  },
+  direccionTextoDisplay: {
+    fontSize: 14,
+    color: "#333",
+    fontWeight: "600",
+    textAlign: "right",
   },
 });

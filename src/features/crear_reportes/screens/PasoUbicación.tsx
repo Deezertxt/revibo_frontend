@@ -38,6 +38,7 @@ export default function PasoUbicacion() {
 
   const debounceTimer = useRef<any>(null);
 
+  // EFECTO INICIAL: Obtiene el GPS guarda la ubicación por defecto de inmediato
   useEffect(() => {
     (async () => {
       try {
@@ -55,23 +56,30 @@ export default function PasoUbicacion() {
           accuracy: Location.Accuracy.Balanced,
         });
 
+        const latInicial = location.coords.latitude;
+        const lngInicial = location.coords.longitude;
+
         const nuevaRegion = {
-          latitude: location.coords.latitude,
-          longitude: location.coords.longitude,
+          latitude: latInicial,
+          longitude: lngInicial,
           latitudeDelta: 0.001,
           longitudeDelta: 0.001,
         };
 
-        setPuntoA({
-          latitude: nuevaRegion.latitude,
-          longitude: nuevaRegion.longitude,
-        });
+        // 1. Actualizamos el estado visual local
+        setPuntoA({ latitude: latInicial, longitude: lngInicial });
         mapRef.current?.animateToRegion(nuevaRegion, 1000);
-        obtenerDireccionTexto(
-          nuevaRegion.latitude,
-          nuevaRegion.longitude,
-          false,
-        );
+
+        // 2. CRÍTICO: Guardamos la ubicación del celular en el Store desde ya
+        updateData({
+          geom: {
+            type: "Point",
+            coordinates: [lngInicial, latInicial], // Longitud primero para GeoJSON
+          },
+        });
+
+        // 3. Obtenemos el nombre de la calle y lo guardamos también en el Store
+        obtenerDireccionTexto(latInicial, lngInicial, false);
       } catch (error) {
         Alert.alert("Error de GPS", "No se pudo obtener la ubicación actual.");
       } finally {
@@ -80,6 +88,7 @@ export default function PasoUbicacion() {
     })();
   }, []);
 
+  // Conversión de coordenadas a calle (Nominatim)
   const obtenerDireccionTexto = async (
     lat: number,
     lng: number,
@@ -95,24 +104,33 @@ export default function PasoUbicacion() {
       const calle =
         data.address.road ||
         data.address.suburb ||
-        data.display_name.split(",")[0];
+        data.display_name.split(",")[0] ||
+        "Calle desconocida";
 
       if (!esPuntoB) {
         setDireccionA(calle);
+        // Guardamos la dirección del Punto A en el store de Zustand
+        updateData({ direccionTexto: calle });
       } else {
         setDireccionB(calle);
+        // Si es un tramo, guardamos el intervalo "Desde calle A hasta calle B"
+        updateData({ direccionTexto: `${direccionA} hasta ${calle}` });
       }
     } catch (error) {
+      const fallbackError = "Dirección desconocida";
       if (!esPuntoB) {
-        setDireccionA("Dirección desconocida");
+        setDireccionA(fallbackError);
+        updateData({ direccionTexto: fallbackError });
       } else {
-        setDireccionB("Dirección desconocida");
+        setDireccionB(fallbackError);
+        updateData({ direccionTexto: `${direccionA} hasta ${fallbackError}` });
       }
     } finally {
       setLoadingDireccion(false);
     }
   };
 
+  // Maneja el guardado en Zustand cuando el usuario interactúa manualmente
   const procesarCambioUbicacion = (
     lat: number,
     lng: number,
@@ -165,15 +183,12 @@ export default function PasoUbicacion() {
     }
   };
 
-  // IMPORTANTE: Maneja el clic directo sobre el mapa
+  // Maneja el clic directo sobre el mapa
   const handleMapPress = (e: any) => {
     const { latitude, longitude } = e.nativeEvent.coordinate;
-
-    // Si es modo punto fijo, el clic mueve el marcador principal
     if (!esTramo) {
       procesarCambioUbicacion(latitude, longitude, false);
     } else {
-      // Si es modo tramo, el clic mueve el banderín de destino (Punto B)
       procesarCambioUbicacion(latitude, longitude, true);
     }
   };
@@ -208,6 +223,7 @@ export default function PasoUbicacion() {
         type: "Point",
         coordinates: [puntoA.longitude, puntoA.latitude],
       },
+      direccionTexto: direccionA, // Volvemos a guardar solo la calle principal en el store
     });
   };
 
@@ -236,7 +252,7 @@ export default function PasoUbicacion() {
               longitudeDelta: 0.001,
             }}
             showsUserLocation={true}
-            onPress={handleMapPress} // <-- Escucha los clics del usuario en cualquier punto del mapa
+            onPress={handleMapPress}
           >
             <Marker
               coordinate={puntoA}

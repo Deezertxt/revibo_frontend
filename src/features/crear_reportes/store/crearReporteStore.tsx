@@ -26,6 +26,7 @@ interface ReporteState {
     type: "Point" | "LineString";
     coordinates: any;
   } | null;
+  direccionTexto: string; // <-- 1. Agregamos el texto de la calle al estado global
   url_imagen: string[];
 
   // Acciones
@@ -43,6 +44,7 @@ const initialState = {
   tipo_reporte: null,
   gravedad_reporte: null,
   geom: null,
+  direccionTexto: "",
   url_imagen: [],
 };
 
