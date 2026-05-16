@@ -1,3 +1,4 @@
+import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import React, { useState } from "react";
 import {
@@ -7,6 +8,7 @@ import {
   Platform,
   Pressable,
   ScrollView,
+  StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
@@ -24,6 +26,7 @@ export default function LoginFormulario() {
   const [email, setEmail] = useState<string>("");
   const [password, setPassword] = useState<string>("");
   const [cargando, setCargando] = useState<boolean>(false);
+  const [mostrarPassword, setMostrarPassword] = useState<boolean>(false);
 
   const handleLogin = async () => {
     if (!email || !password) {
@@ -38,7 +41,6 @@ export default function LoginFormulario() {
         contrasena: password,
       });
 
-      // 1. Guardamos la sesión en el store
       setRegistered({
         accessToken: resultado.accessToken,
         name: resultado.user.nombre,
@@ -49,7 +51,6 @@ export default function LoginFormulario() {
       const rolUser = resultado.user.rol || "usuario";
       const rolFormateado = rolUser.charAt(0).toUpperCase() + rolUser.slice(1);
 
-      // 2. Alerta con redirección basada en el ROL
       Alert.alert(
         `Bienvenido ${rolFormateado}`,
         `Hola ${resultado.user.nombre}, has iniciado sesión correctamente.`,
@@ -57,7 +58,6 @@ export default function LoginFormulario() {
           {
             text: "Continuar",
             onPress: () => {
-              // Si es admin, lo mandamos a la pestaña de admin, si no, al mapa (tabs)
               if (rolUser.toLowerCase() === "admin") {
                 router.replace("/(tabs)/admin");
               } else {
@@ -132,16 +132,9 @@ export default function LoginFormulario() {
                 Correo electrónico
               </Text>
               <TextInput
-                style={{
-                  height: 55,
-                  borderWidth: 1,
-                  borderColor: "#E0E0E0",
-                  borderRadius: 12,
-                  paddingHorizontal: 15,
-                  fontSize: 16,
-                  color: "#333",
-                }}
+                style={styles.input}
                 placeholder="usuario@correo.com"
+                placeholderTextColor="rgba(0, 0, 0, 0.25)" // Stateholder más transparente
                 value={email}
                 onChangeText={setEmail}
                 autoCapitalize="none"
@@ -161,21 +154,27 @@ export default function LoginFormulario() {
               >
                 Contraseña
               </Text>
-              <TextInput
-                style={{
-                  height: 55,
-                  borderWidth: 1,
-                  borderColor: "#E0E0E0",
-                  borderRadius: 12,
-                  paddingHorizontal: 15,
-                  fontSize: 16,
-                  color: "#333",
-                }}
-                placeholder="••••••••"
-                secureTextEntry
-                value={password}
-                onChangeText={setPassword}
-              />
+              <View style={styles.passwordContainer}>
+                <TextInput
+                  style={styles.passwordInput}
+                  placeholder="••••••••"
+                  placeholderTextColor="rgba(0, 0, 0, 0.25)" // Stateholder más transparente
+                  secureTextEntry={!mostrarPassword}
+                  value={password}
+                  onChangeText={setPassword}
+                />
+                <TouchableOpacity
+                  style={styles.eyeIcon}
+                  onPress={() => setMostrarPassword(!mostrarPassword)}
+                  activeOpacity={0.6}
+                >
+                  <Ionicons
+                    name={mostrarPassword ? "eye-off-outline" : "eye-outline"}
+                    size={22}
+                    color="#A0A0A0"
+                  />
+                </TouchableOpacity>
+              </View>
             </View>
 
             <View>
@@ -253,3 +252,36 @@ export default function LoginFormulario() {
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  input: {
+    height: 55,
+    borderWidth: 1,
+    borderColor: "#E0E0E0",
+    borderRadius: 12,
+    paddingHorizontal: 15,
+    fontSize: 16,
+    color: "#333",
+  },
+  passwordContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    height: 55,
+    borderWidth: 1,
+    borderColor: "#E0E0E0",
+    borderRadius: 12,
+  },
+  passwordInput: {
+    flex: 1,
+    height: "100%",
+    paddingHorizontal: 15,
+    fontSize: 16,
+    color: "#333",
+  },
+  eyeIcon: {
+    paddingHorizontal: 15,
+    justifyContent: "center",
+    alignItems: "center",
+    height: "100%",
+  },
+});
