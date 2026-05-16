@@ -1,6 +1,9 @@
 import { Ionicons } from "@expo/vector-icons";
-import React, { useState } from "react";
+import * as Location from "expo-location";
+import React, { useEffect, useRef, useState } from "react";
 import {
+  ActivityIndicator,
+  Alert,
   Dimensions,
   ScrollView,
   StyleSheet,
@@ -16,7 +19,8 @@ const { width } = Dimensions.get("window");
 export default function PasoUbicacion() {
   const { updateData, setStep } = useCrearReporteStore();
 
-  // Estados para los puntos del tramo
+  const mapRef = useRef<MapView | null>(null);
+
   const [puntoA, setPuntoA] = useState({
     latitude: -17.3935,
     longitude: -66.1568,
@@ -27,38 +31,184 @@ export default function PasoUbicacion() {
   } | null>(null);
   const [esTramo, setEsTramo] = useState(false);
 
-  // Al mover el mapa, actualizamos el punto que esté activo
-  const handleRegionChange = (newRegion: any) => {
-    if (!esTramo) {
-      setPuntoA({
-        latitude: newRegion.latitude,
-        longitude: newRegion.longitude,
-      });
-      // Guardamos como Punto por defecto
-      updateData({
-        geom: {
-          type: "Point",
-          coordinates: [newRegion.longitude, newRegion.latitude],
-        },
-      });
-    } else {
-      setPuntoB({
-        latitude: newRegion.latitude,
-        longitude: newRegion.longitude,
-      });
-      // Si ya hay Punto B, guardamos como LineString
-      if (puntoA) {
+  const [direccionA, setDireccionA] = useState("Cargando dirección...");
+  const [direccionB, setDireccionB] = useState("");
+  const [loadingDireccion, setLoadingDireccion] = useState(false);
+  const [loadingGPS, setLoadingGPS] = useState(true);
+
+  const debounceTimer = useRef<any>(null);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        let { status } = await Location.requestForegroundPermissionsAsync();
+        if (status !== "granted") {
+          Alert.alert(
+            "Permiso denegado",
+            "Necesitamos acceso a tu ubicación para centrar el mapa automáticamente.",
+          );
+          setLoadingGPS(false);
+          return;
+        }
+
+        let location = await Location.getCurrentPositionAsync({
+          accuracy: Location.Accuracy.Balanced,
+        });
+
+        const nuevaRegion = {
+          latitude: location.coords.latitude,
+          longitude: location.coords.longitude,
+          latitudeDelta: 0.001,
+          longitudeDelta: 0.001,
+        };
+
+        setPuntoA({
+          latitude: nuevaRegion.latitude,
+          longitude: nuevaRegion.longitude,
+        });
+        mapRef.current?.animateToRegion(nuevaRegion, 1000);
+        obtenerDireccionTexto(
+          nuevaRegion.latitude,
+          nuevaRegion.longitude,
+          false,
+        );
+      } catch (error) {
+        Alert.alert("Error de GPS", "No se pudo obtener la ubicación actual.");
+      } finally {
+        setLoadingGPS(false);
+      }
+    })();
+  }, []);
+
+  const obtenerDireccionTexto = async (
+    lat: number,
+    lng: number,
+    esPuntoB: boolean,
+  ) => {
+    setLoadingDireccion(true);
+    try {
+      const response = await fetch(
+        `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}`,
+        { headers: { "User-Agent": "ReviboApp/1.0" } },
+      );
+      const data = await response.json();
+      const calle =
+        data.address.road ||
+        data.address.suburb ||
+        data.display_name.split(",")[0];
+
+      if (!esPuntoB) {
+        setDireccionA(calle);
+      } else {
+        setDireccionB(calle);
+      }
+    } catch (error) {
+      if (!esPuntoB) {
+        setDireccionA("Dirección desconocida");
+      } else {
+        setDireccionB("Dirección desconocida");
+      }
+    } finally {
+      setLoadingDireccion(false);
+    }
+  };
+
+  const procesarCambioUbicacion = (
+    lat: number,
+    lng: number,
+    esFin: boolean,
+  ) => {
+    if (debounceTimer.current) {
+      clearTimeout(debounceTimer.current);
+    }
+
+    if (!esFin) {
+      setPuntoA({ latitude: lat, longitude: lng });
+
+      if (esTramo && puntoB) {
         updateData({
           geom: {
             type: "LineString",
             coordinates: [
-              [puntoA.longitude, puntoA.latitude],
-              [newRegion.longitude, newRegion.latitude],
+              [lng, lat],
+              [puntoB.longitude, puntoB.latitude],
             ],
           },
         });
+      } else {
+        updateData({
+          geom: {
+            type: "Point",
+            coordinates: [lng, lat],
+          },
+        });
       }
+
+      debounceTimer.current = window.setTimeout(() => {
+        obtenerDireccionTexto(lat, lng, false);
+      }, 600);
+    } else {
+      setPuntoB({ latitude: lat, longitude: lng });
+      updateData({
+        geom: {
+          type: "LineString",
+          coordinates: [
+            [puntoA.longitude, puntoA.latitude],
+            [lng, lat],
+          ],
+        },
+      });
+
+      debounceTimer.current = window.setTimeout(() => {
+        obtenerDireccionTexto(lat, lng, true);
+      }, 600);
     }
+  };
+
+  // IMPORTANTE: Maneja el clic directo sobre el mapa
+  const handleMapPress = (e: any) => {
+    const { latitude, longitude } = e.nativeEvent.coordinate;
+
+    // Si es modo punto fijo, el clic mueve el marcador principal
+    if (!esTramo) {
+      procesarCambioUbicacion(latitude, longitude, false);
+    } else {
+      // Si es modo tramo, el clic mueve el banderín de destino (Punto B)
+      procesarCambioUbicacion(latitude, longitude, true);
+    }
+  };
+
+  const activarModoTramo = () => {
+    setEsTramo(true);
+    const latB = puntoA.latitude;
+    const lngB = puntoA.longitude + 0.0004;
+
+    setPuntoB({ latitude: latB, longitude: lngB });
+
+    updateData({
+      geom: {
+        type: "LineString",
+        coordinates: [
+          [puntoA.longitude, puntoA.latitude],
+          [lngB, latB],
+        ],
+      },
+    });
+
+    obtenerDireccionTexto(latB, lngB, true);
+  };
+
+  const cambiarAModoPunto = () => {
+    setEsTramo(false);
+    setPuntoB(null);
+    setDireccionB("");
+
+    updateData({
+      geom: {
+        type: "Point",
+        coordinates: [puntoA.longitude, puntoA.latitude],
+      },
+    });
   };
 
   return (
@@ -68,50 +218,65 @@ export default function PasoUbicacion() {
     >
       <Text style={styles.sectionTitle}>Ubicación del incidente</Text>
 
-      {/* CONTENEDOR DEL MAPA */}
       <View style={styles.mapWrapper}>
-        <MapView
-          provider={PROVIDER_GOOGLE}
-          style={styles.map}
-          initialRegion={{
-            latitude: puntoA.latitude,
-            longitude: puntoA.longitude,
-            latitudeDelta: 0.005,
-            longitudeDelta: 0.005,
-          }}
-          onRegionChangeComplete={handleRegionChange}
-        >
-          {/* Marcador Punto A */}
-          <Marker coordinate={puntoA}>
-            <Ionicons name="location" size={35} color="#6347D1" />
-          </Marker>
-
-          {/* Marcador Punto B (si existe) */}
-          {puntoB && (
-            <Marker coordinate={puntoB}>
-              <Ionicons name="flag" size={35} color="#FF4763" />
+        {loadingGPS ? (
+          <View style={styles.loadingGpsContainer}>
+            <ActivityIndicator size="large" color="#6347D1" />
+            <Text style={styles.loadingGpsText}>Buscando señal GPS...</Text>
+          </View>
+        ) : (
+          <MapView
+            ref={mapRef}
+            provider={PROVIDER_GOOGLE}
+            style={styles.map}
+            initialRegion={{
+              latitude: puntoA.latitude,
+              longitude: puntoA.longitude,
+              latitudeDelta: 0.001,
+              longitudeDelta: 0.001,
+            }}
+            showsUserLocation={true}
+            onPress={handleMapPress} // <-- Escucha los clics del usuario en cualquier punto del mapa
+          >
+            <Marker
+              coordinate={puntoA}
+              draggable
+              onDragEnd={(e) => {
+                const { latitude, longitude } = e.nativeEvent.coordinate;
+                procesarCambioUbicacion(latitude, longitude, false);
+              }}
+            >
+              <Ionicons name="location" size={38} color="#6347D1" />
             </Marker>
-          )}
 
-          {/* Línea que une ambos puntos */}
-          {puntoA && puntoB && (
-            <Polyline
-              coordinates={[puntoA, puntoB]}
-              strokeColor="#6347D1"
-              strokeWidth={3}
-            />
-          )}
-        </MapView>
+            {esTramo && puntoB && (
+              <Marker
+                coordinate={puntoB}
+                draggable
+                onDragEnd={(e) => {
+                  const { latitude, longitude } = e.nativeEvent.coordinate;
+                  procesarCambioUbicacion(latitude, longitude, true);
+                }}
+              >
+                <Ionicons name="flag" size={38} color="#FF4763" />
+              </Marker>
+            )}
+
+            {esTramo && puntoB && (
+              <Polyline
+                coordinates={[puntoA, puntoB]}
+                strokeColor="#6347D1"
+                strokeWidth={4}
+              />
+            )}
+          </MapView>
+        )}
       </View>
 
-      {/* BOTONES DE ACCIÓN RÁPIDA */}
       <View style={styles.actionRow}>
         <TouchableOpacity
           style={[styles.modeBtn, !esTramo && styles.modeBtnActive]}
-          onPress={() => {
-            setEsTramo(false);
-            setPuntoB(null);
-          }}
+          onPress={cambiarAModoPunto}
         >
           <Text
             style={[styles.modeBtnText, !esTramo && styles.modeBtnTextActive]}
@@ -122,7 +287,7 @@ export default function PasoUbicacion() {
 
         <TouchableOpacity
           style={[styles.modeBtn, esTramo && styles.modeBtnActive]}
-          onPress={() => setEsTramo(true)}
+          onPress={activarModoTramo}
         >
           <Text
             style={[styles.modeBtnText, esTramo && styles.modeBtnTextActive]}
@@ -132,30 +297,45 @@ export default function PasoUbicacion() {
         </TouchableOpacity>
       </View>
 
-      {/* RESUMEN DE COORDENADAS (Abajo del mapa) */}
       <View style={styles.summaryCard}>
+        <View style={styles.headerCardRow}>
+          <Text style={styles.cardTitle}>Dirección detectada</Text>
+          {loadingDireccion && (
+            <ActivityIndicator size="small" color="#6347D1" />
+          )}
+        </View>
+
         <View style={styles.summaryRow}>
-          <Ionicons name="pin" size={18} color="#6347D1" />
-          <Text style={styles.summaryLabel}>Inicio (A):</Text>
-          <Text style={styles.summaryValue}>
-            {puntoA.latitude.toFixed(5)}, {puntoA.longitude.toFixed(5)}
-          </Text>
+          <View style={styles.iconCirclePurple}>
+            <Ionicons name="pin" size={16} color="#6347D1" />
+          </View>
+          <View style={styles.textContainer}>
+            <Text style={styles.summaryLabel}>
+              Inicio / Punto (Toca el mapa o arrastra)
+            </Text>
+            <Text style={styles.summaryValue} numberOfLines={2}>
+              {direccionA}
+            </Text>
+          </View>
         </View>
 
         {esTramo && (
-          <View style={styles.summaryRow}>
-            <Ionicons name="flag" size={18} color="#FF4763" />
-            <Text style={styles.summaryLabel}>Fin (B):</Text>
-            <Text style={styles.summaryValue}>
-              {puntoB
-                ? `${puntoB.latitude.toFixed(5)}, ${puntoB.longitude.toFixed(5)}`
-                : "Mueve el mapa..."}
-            </Text>
+          <View style={[styles.summaryRow, { marginTop: 12 }]}>
+            <View style={styles.iconCircleRed}>
+              <Ionicons name="flag" size={16} color="#FF4763" />
+            </View>
+            <View style={styles.textContainer}>
+              <Text style={styles.summaryLabel}>
+                Fin del Tramo (Toca el mapa o arrastra)
+              </Text>
+              <Text style={styles.summaryValue} numberOfLines={2}>
+                {direccionB || "Cargando dirección de fin..."}
+              </Text>
+            </View>
           </View>
         )}
       </View>
 
-      {/* BOTÓN CONTINUAR */}
       <TouchableOpacity onPress={() => setStep(2)} style={styles.btnContinuar}>
         <Text style={styles.btnText}>Confirmar y Continuar</Text>
         <Ionicons name="arrow-forward" size={20} color="white" />
@@ -181,7 +361,7 @@ const styles = StyleSheet.create({
   },
   mapWrapper: {
     width: "100%",
-    height: 250, // Altura reducida
+    height: 230,
     borderRadius: 20,
     overflow: "hidden",
     backgroundColor: "#EEE",
@@ -192,6 +372,18 @@ const styles = StyleSheet.create({
   map: {
     flex: 1,
   },
+  loadingGpsContainer: {
+    height: 230,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "#F8F9FD",
+  },
+  loadingGpsText: {
+    marginTop: 10,
+    fontSize: 14,
+    color: "#6347D1",
+    fontWeight: "500",
+  },
   actionRow: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -199,46 +391,81 @@ const styles = StyleSheet.create({
   },
   modeBtn: {
     flex: 0.48,
-    paddingVertical: 10,
-    borderRadius: 12,
-    backgroundColor: "#F0F0F0",
+    paddingVertical: 12,
+    borderRadius: 15,
+    backgroundColor: "#F5F6FA",
     alignItems: "center",
     borderWidth: 1,
-    borderColor: "#E0E0E0",
+    borderColor: "#EAEAEA",
   },
   modeBtnActive: {
     backgroundColor: "#6347D1",
     borderColor: "#6347D1",
   },
   modeBtnText: {
-    color: "#666",
+    color: "#777",
     fontWeight: "600",
+    fontSize: 14,
   },
   modeBtnTextActive: {
     color: "#FFF",
   },
   summaryCard: {
     backgroundColor: "#F8F9FD",
-    borderRadius: 15,
-    padding: 15,
+    borderRadius: 20,
+    padding: 18,
     marginBottom: 20,
+    borderWidth: 1,
+    borderColor: "#EEF0FF",
+  },
+  headerCardRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 15,
+  },
+  cardTitle: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: "#999",
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
   },
   summaryRow: {
     flexDirection: "row",
     alignItems: "center",
-    marginBottom: 10,
+  },
+  iconCirclePurple: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: "#EEF0FF",
+    justifyContent: "center",
+    alignItems: "center",
+    marginRight: 12,
+  },
+  iconCircleRed: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: "#FFEBEE",
+    justifyContent: "center",
+    alignItems: "center",
+    marginRight: 12,
+  },
+  textContainer: {
+    flex: 1,
   },
   summaryLabel: {
-    flex: 1,
-    marginLeft: 8,
-    fontSize: 14,
-    color: "#666",
-    fontWeight: "600",
+    fontSize: 12,
+    color: "#888",
+    fontWeight: "500",
+    marginBottom: 2,
   },
   summaryValue: {
-    fontSize: 13,
+    fontSize: 15,
     color: "#333",
-    fontFamily: "monospace",
+    fontWeight: "600",
   },
   btnContinuar: {
     backgroundColor: "#6347D1",
