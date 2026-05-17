@@ -1,0 +1,48 @@
+{
+  "project_info": {
+    "project_number": "627247551729",
+    "project_id": "revibo-e9624",
+    "storage_bucket": "revibo-e9624.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:627247551729:android:c02b66590fa9c5aed4c550",
+        "android_client_info": {
+          "package_name": "com.sixsevempm.revibo"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDeuCeEpNYMFuaKBiM2R8jTP0bUsQdNdoo"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:627247551729:android:22aab4cb12f12496d4c550",
+        "android_client_info": {
+          "package_name": "com.sixsevenpm.revibo"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDeuCeEpNYMFuaKBiM2R8jTP0bUsQdNdoo"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
