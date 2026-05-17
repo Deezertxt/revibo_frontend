@@ -4,18 +4,28 @@ import * as Device from 'expo-device';
 import Constants from 'expo-constants';
 import { Platform } from "react-native";
 
-const DEFAULT_API_URL =
+/* const DEFAULT_API_URL =
   Platform.OS === "android"
     ? "http://10.0.2.2:8000/api/v1"
     : "http://localhost:8000/api/v1";
 const API_URL = (process.env.EXPO_PUBLIC_API_URL ?? DEFAULT_API_URL).replace(
   /\/$/,
   "",
-);
+); */
+
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowAlert: true,
+    shouldPlaySound: true,
+    shouldSetBadge: true,
+    shouldShowBanner: true,
+    shouldShowList: true,
+  }),
+});
 
 export function usePushNotifications() {
-    const notificationListener = useRef<any>();
-    const responseListener = useRef<any>();
+    const notificationListener = useRef<Notifications.Subscription | null>(null);
+    const responseListener = useRef<Notifications.Subscription | null>(null);
 
     useEffect(() => {
         registerForPushNotifications();
@@ -35,11 +45,8 @@ export function usePushNotifications() {
             );
         
         return () => {
-            if(notificationListener.current)
-                Notifications.removeNotificationSubscription(notificationListener.current);   
-        
-            if(responseListener.current)
-                Notifications.removeNotificationSubscription(responseListener.current);
+            notificationListener.current?.remove()
+            responseListener.current?.remove()
         }
     }, []);
 
@@ -53,6 +60,8 @@ async function registerForPushNotifications() {
 
     const { status: existingStatus} = await Notifications.getPermissionsAsync(); // se consulta si se tiene permisos de noti
 
+    console.log("existing status", existingStatus);
+
     let finalStatus = existingStatus;
 
     if(existingStatus !== 'granted') { //sino hay permisos se solicita
@@ -65,9 +74,15 @@ async function registerForPushNotifications() {
         return;
     }
 
-    const tokenData = await Notifications.getExpoPushTokenAsync({
+    console.log("final status", finalStatus);
+
+    //console.log("exponcngf:   ", Constants.expoConfig);
+
+    /* const tokenData = await Notifications.getExpoPushTokenAsync({
         projectId: Constants.expoConfig?.extra?.eas?.projectId,
-    });
+    }); */
+
+    const tokenData = await Notifications.getExpoPushTokenAsync();
 
     const token = tokenData.data;
 
@@ -78,7 +93,7 @@ async function registerForPushNotifications() {
 
 async function sendTokenToBackend(token: string) {
     try {
-        const response = await fetch(`${API_URL}/device-token`, {
+        const response = await fetch('https://revibo-backend.onrender.com/api/v1/device-token', {
             method: "POST",
             headers: {
                 "Content-Type": "application/json"
@@ -89,12 +104,8 @@ async function sendTokenToBackend(token: string) {
             })
         });
 
-    if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || "Error al guardar el token");
-    }
-
     const data = await response.json();
+    console.log("respuesta del back", data);
     console.log("Token guardado con éxito:", data);
         
     } catch (error) {

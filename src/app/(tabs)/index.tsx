@@ -12,7 +12,7 @@ import {
     TextInput,
     View,
 } from 'react-native';
-import MapView, { Marker, Polyline, Region } from 'react-native-maps';
+//import MapView, { Marker, Polyline, Region } from 'react-native-maps';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import {
@@ -33,18 +33,18 @@ import { getSavedMapRegion, setSavedMapRegion } from '@/features/map/map-view-st
 const PRIMARY = '#5B3FD9';
 const LOCATION_FAB_BOTTOM_OFFSET = 8;
 
-const DEFAULT_REGION: Region = {
+/* const DEFAULT_REGION: Region = {
   latitude: -17.3935,
   longitude: -66.157,
   latitudeDelta: 0.08,
   longitudeDelta: 0.08,
-};
+}; */
 
 type IncidentFilter = 'todos' | IncidentType;
 
 export default function MapHomeScreen() {
   const router = useRouter();
-  const mapRef = useRef<MapView | null>(null);
+  //const mapRef = useRef<MapView | null>(null);
   const insets = useSafeAreaInsets();
 
   const [incidents, setIncidents] = useState<Incident[]>([]);
@@ -95,10 +95,10 @@ export default function MapHomeScreen() {
   };
 
   const centerToUserLocation = async () => {
-    if (!mapRef.current) {
+    /* if (!mapRef.current) {
       return;
     }
-
+ */
     setCenteringUser(true);
 
     try {
@@ -124,7 +124,7 @@ export default function MapHomeScreen() {
         setUserCoordinate(coordinate);
       }
 
-      mapRef.current.animateToRegion(
+      /* mapRef.current.animateToRegion(
         {
           latitude: coordinate.latitude,
           longitude: coordinate.longitude,
@@ -132,7 +132,7 @@ export default function MapHomeScreen() {
           longitudeDelta: 0.01,
         },
         450
-      );
+      ); */
     } catch {
       setInfoMessage('No se pudo obtener tu ubicacion ahora. Intenta nuevamente.');
     } finally {
@@ -144,7 +144,7 @@ export default function MapHomeScreen() {
     setSheetExpanded(false);
     setSelectedIncident(incident);
 
-    mapRef.current?.animateToRegion(
+    /* mapRef.current?.animateToRegion(
       {
         latitude: incident.latitude - 0.004,
         longitude: incident.longitude,
@@ -152,7 +152,7 @@ export default function MapHomeScreen() {
         longitudeDelta: 0.012,
       },
       450
-    );
+    ); */
   };
 
   useEffect(() => {
@@ -264,13 +264,13 @@ export default function MapHomeScreen() {
   }, [selectedIncident]);
 
   useEffect(() => {
-    if (!incidents.length || hasAppliedInitialFitRef.current || !mapRef.current) {
+    /* if (!incidents.length || hasAppliedInitialFitRef.current || !mapRef.current) {
       return;
-    }
+    } */
 
     hasAppliedInitialFitRef.current = true;
 
-    mapRef.current.fitToCoordinates(
+    /* mapRef.current.fitToCoordinates(
       incidents.flatMap((incident) => incident.mapCoordinates),
       {
         edgePadding: {
@@ -281,25 +281,25 @@ export default function MapHomeScreen() {
         },
         animated: true,
       }
-    );
+    ); */
   }, [incidents]);
 
   useEffect(() => {
-    if (!mapRef.current) {
+    /* if (!mapRef.current) {
       return;
-    }
+    } */
 
     setSelectedIncident(null);
 
-    if (filteredIncidents.length === 0) {
+    /* if (filteredIncidents.length === 0) {
       mapRef.current.animateToRegion(DEFAULT_REGION, 550);
       return;
-    }
+    } */
 
     if (filteredIncidents.length === 1) {
       const target = filteredIncidents[0];
 
-      mapRef.current.animateToRegion(
+      /* mapRef.current.animateToRegion(
         {
           latitude: target.latitude,
           longitude: target.longitude,
@@ -307,12 +307,12 @@ export default function MapHomeScreen() {
           longitudeDelta: 0.02,
         },
         550
-      );
+      ); */
 
       return;
     }
 
-    mapRef.current.fitToCoordinates(
+    /* mapRef.current.fitToCoordinates(
       filteredIncidents.flatMap((incident) => incident.mapCoordinates),
       {
         edgePadding: {
@@ -323,7 +323,7 @@ export default function MapHomeScreen() {
         },
         animated: true,
       }
-    );
+    ); */
   }, [selectedFilter, filteredIncidents]);
 
   return (
@@ -358,7 +358,7 @@ export default function MapHomeScreen() {
         </ScrollView>
       </View>
 
-      <MapView
+      {/* <MapView
         ref={mapRef}
         initialRegion={restoredRegion ?? DEFAULT_REGION}
         style={styles.map}
@@ -405,7 +405,7 @@ export default function MapHomeScreen() {
             </Fragment>
           );
         })}
-      </MapView>
+      </MapView> */}
 
       <Pressable
         onPress={centerToUserLocation}
