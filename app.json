@@ -21,7 +21,12 @@
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
       "package": "com.sixsevempm.revibo",
-      "googleServicesFile": "./google-services.json"
+      "googleServicesFile": "./google-services.json",
+      "config": {
+        "googleMaps": {
+            "apiKey": "AIzaSyChO-LOL51YwtR8q-fhp3U9xEBuDf5UslA"
+        }
+      }
     },
     "web": {
       "output": "static",

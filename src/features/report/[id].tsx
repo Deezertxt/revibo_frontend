@@ -10,7 +10,7 @@ import {
     Text,
     View,
 } from 'react-native';
-//import MapView, { Marker, Polyline } from 'react-native-maps';
+import MapView, { Marker, Polyline } from 'react-native-maps';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { fetchIncidentDetailById } from '@/features/incidents/incidents.service';
@@ -101,7 +101,7 @@ export default function IncidentDetailScreen() {
       {!loading && !errorMessage && incident ? (
         <ScrollView contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 20 }]}>
           <View style={styles.mapWrapper}>
-            {/* <MapView
+            <MapView
               style={styles.miniMap}
               initialRegion={{
                 latitude: incident.latitude,
@@ -131,7 +131,7 @@ export default function IncidentDetailScreen() {
                   pinColor={INCIDENT_TYPE_COLORS[incident.type]}
                 />
               )}
-            </MapView> */}
+            </MapView>
 
             <Pressable
               accessibilityRole="button"
