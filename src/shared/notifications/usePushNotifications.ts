@@ -77,18 +77,25 @@ async function registerForPushNotifications() {
     console.log("final status", finalStatus);
 
     //console.log("exponcngf:   ", Constants.expoConfig);
+    try {
+        const tokenData = await Notifications.getExpoPushTokenAsync({
+            projectId: Constants.expoConfig?.extra?.eas?.projectId,
+        });
+        const token = tokenData.data;
+        console.log("Expo push token", token);
 
-    /* const tokenData = await Notifications.getExpoPushTokenAsync({
-        projectId: Constants.expoConfig?.extra?.eas?.projectId,
-    }); */
+        await sendTokenToBackend(token);
+    } catch (error) {
+        console.log("Error al obtener el token de notificación", error);
+    }
 
-    const tokenData = await Notifications.getExpoPushTokenAsync();
+    
 
-    const token = tokenData.data;
+    //const tokenData = await Notifications.getExpoPushTokenAsync();
 
-    console.log("Expo push token", token);
+    
 
-    await sendTokenToBackend(token);
+    
 }
 
 async function sendTokenToBackend(token: string) {
