@@ -1,8 +1,10 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import * as Notifications from 'expo-notifications';
 import * as Device from 'expo-device';
 import Constants from 'expo-constants';
 import { Platform } from "react-native";
+import * as Location from "expo-location";
+import { Double } from "react-native/Libraries/Types/CodegenTypes";
 
 /* const DEFAULT_API_URL =
   Platform.OS === "android"
@@ -29,7 +31,6 @@ export function usePushNotifications() {
 
     useEffect(() => {
         registerForPushNotifications();
-
         notificationListener.current = 
             Notifications.addNotificationReceivedListener(
                 notification => {
@@ -49,7 +50,6 @@ export function usePushNotifications() {
             responseListener.current?.remove()
         }
     }, []);
-
 }
 
 async function registerForPushNotifications() {
@@ -77,28 +77,31 @@ async function registerForPushNotifications() {
     console.log("final status", finalStatus);
 
     //console.log("exponcngf:   ", Constants.expoConfig);
+    // ---------*-  Permisos de ubicacion -*----------
+    const {status: locStatus} =
+        await Location.requestForegroundPermissionsAsync();
+
+    if (locStatus !== 'granted') return;
+    const location = await Location.getCurrentPositionAsync({});
+    const lat = location.coords.latitude;
+    const lng = location.coords.longitude;
+
+    console.log("primer lat, lng", lat, lng);
+
     try {
         const tokenData = await Notifications.getExpoPushTokenAsync({
             projectId: Constants.expoConfig?.extra?.eas?.projectId,
         });
         const token = tokenData.data;
         console.log("Expo push token", token);
-
-        await sendTokenToBackend(token);
+        await sendTokenToBackend(token, lat, lng);
     } catch (error) {
         console.log("Error al obtener el token de notificación", error);
     }
-
-    
-
     //const tokenData = await Notifications.getExpoPushTokenAsync();
-
-    
-
-    
 }
 
-async function sendTokenToBackend(token: string) {
+async function sendTokenToBackend(token: string, lat: Double, lng: Double) {
     try {
         const response = await fetch('https://revibo-backend.onrender.com/api/v1/device-token', {
             method: "POST",
@@ -107,7 +110,9 @@ async function sendTokenToBackend(token: string) {
             },
             body: JSON.stringify({
                 token,
-                platform: Platform.OS
+                platform: Platform.OS,
+                lat: lat,
+                lng: lng
             })
         });
 
