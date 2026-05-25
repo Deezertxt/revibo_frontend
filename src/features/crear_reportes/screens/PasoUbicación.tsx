@@ -31,6 +31,10 @@ export default function PasoUbicacion() {
   } | null>(null);
   const [esTramo, setEsTramo] = useState(false);
 
+  const [coordenadasRutaVisual, setCoordenadasRutaVisual] = useState<
+    { latitude: number; longitude: number }[]
+  >([]);
+
   const [direccionA, setDireccionA] = useState("Cargando dirección...");
   const [direccionB, setDireccionB] = useState("");
   const [loadingDireccion, setLoadingDireccion] = useState(false);
@@ -38,7 +42,6 @@ export default function PasoUbicacion() {
 
   const debounceTimer = useRef<any>(null);
 
-  // EFECTO INICIAL: Obtiene el GPS guarda la ubicación por defecto de inmediato
   useEffect(() => {
     (async () => {
       try {
@@ -62,23 +65,21 @@ export default function PasoUbicacion() {
         const nuevaRegion = {
           latitude: latInicial,
           longitude: lngInicial,
-          latitudeDelta: 0.001,
-          longitudeDelta: 0.001,
+          latitudeDelta: 0.004,
+          longitudeDelta: 0.004,
         };
 
-        // 1. Actualizamos el estado visual local
         setPuntoA({ latitude: latInicial, longitude: lngInicial });
         mapRef.current?.animateToRegion(nuevaRegion, 1000);
 
-        // 2. CRÍTICO: Guardamos la ubicación del celular en el Store desde ya
         updateData({
           geom: {
             type: "Point",
-            coordinates: [lngInicial, latInicial], // Longitud primero para GeoJSON
+            coordinates: [lngInicial, latInicial],
           },
         });
 
-        // 3. Obtenemos el nombre de la calle y lo guardamos también en el Store
+        // nombre de la calle
         obtenerDireccionTexto(latInicial, lngInicial, false);
       } catch (error) {
         Alert.alert("Error de GPS", "No se pudo obtener la ubicación actual.");
@@ -88,7 +89,6 @@ export default function PasoUbicacion() {
     })();
   }, []);
 
-  // Conversión de coordenadas a calle (Nominatim)
   const obtenerDireccionTexto = async (
     lat: number,
     lng: number,
@@ -109,11 +109,9 @@ export default function PasoUbicacion() {
 
       if (!esPuntoB) {
         setDireccionA(calle);
-        // Guardamos la dirección del Punto A en el store de Zustand
         updateData({ direccionTexto: calle });
       } else {
         setDireccionB(calle);
-        // Si es un tramo, guardamos el intervalo "Desde calle A hasta calle B"
         updateData({ direccionTexto: `${direccionA} hasta ${calle}` });
       }
     } catch (error) {
@@ -130,7 +128,41 @@ export default function PasoUbicacion() {
     }
   };
 
-  // Maneja el guardado en Zustand cuando el usuario interactúa manualmente
+  const calcularRutaGratis = async (
+    latA: number,
+    lngA: number,
+    latB: number,
+    lngB: number,
+  ) => {
+    try {
+      const url = `https://router.project-osrm.org/route/v1/driving/${lngA},${latA};${lngB},${latB}?overview=full&geometries=geojson`;
+      const response = await fetch(url);
+      const data = await response.json();
+
+      if (data.code === "Ok" && data.routes?.length > 0) {
+        const geometryCoordinates = data.routes[0].geometry.coordinates;
+
+        const puntosFormatoMapa = geometryCoordinates.map(
+          (coord: number[]) => ({
+            latitude: coord[1],
+            longitude: coord[0],
+          }),
+        );
+
+        setCoordenadasRutaVisual(puntosFormatoMapa);
+
+        updateData({
+          geom: {
+            type: "LineString",
+            coordinates: geometryCoordinates,
+          },
+        });
+      }
+    } catch (error) {
+      console.error("Error en el cálculo de ruta con OSRM:", error);
+    }
+  };
+
   const procesarCambioUbicacion = (
     lat: number,
     lng: number,
@@ -144,15 +176,7 @@ export default function PasoUbicacion() {
       setPuntoA({ latitude: lat, longitude: lng });
 
       if (esTramo && puntoB) {
-        updateData({
-          geom: {
-            type: "LineString",
-            coordinates: [
-              [lng, lat],
-              [puntoB.longitude, puntoB.latitude],
-            ],
-          },
-        });
+        calcularRutaGratis(lat, lng, puntoB.latitude, puntoB.longitude);
       } else {
         updateData({
           geom: {
@@ -167,15 +191,7 @@ export default function PasoUbicacion() {
       }, 600);
     } else {
       setPuntoB({ latitude: lat, longitude: lng });
-      updateData({
-        geom: {
-          type: "LineString",
-          coordinates: [
-            [puntoA.longitude, puntoA.latitude],
-            [lng, lat],
-          ],
-        },
-      });
+      calcularRutaGratis(puntoA.latitude, puntoA.longitude, lat, lng);
 
       debounceTimer.current = window.setTimeout(() => {
         obtenerDireccionTexto(lat, lng, true);
@@ -183,7 +199,6 @@ export default function PasoUbicacion() {
     }
   };
 
-  // Maneja el clic directo sobre el mapa
   const handleMapPress = (e: any) => {
     const { latitude, longitude } = e.nativeEvent.coordinate;
     if (!esTramo) {
@@ -195,21 +210,12 @@ export default function PasoUbicacion() {
 
   const activarModoTramo = () => {
     setEsTramo(true);
-    const latB = puntoA.latitude;
-    const lngB = puntoA.longitude + 0.0004;
+
+    const latB = puntoA.latitude - 0.0015;
+    const lngB = puntoA.longitude + 0.0015;
 
     setPuntoB({ latitude: latB, longitude: lngB });
-
-    updateData({
-      geom: {
-        type: "LineString",
-        coordinates: [
-          [puntoA.longitude, puntoA.latitude],
-          [lngB, latB],
-        ],
-      },
-    });
-
+    calcularRutaGratis(puntoA.latitude, puntoA.longitude, latB, lngB);
     obtenerDireccionTexto(latB, lngB, true);
   };
 
@@ -217,13 +223,14 @@ export default function PasoUbicacion() {
     setEsTramo(false);
     setPuntoB(null);
     setDireccionB("");
+    setCoordenadasRutaVisual([]);
 
     updateData({
       geom: {
         type: "Point",
         coordinates: [puntoA.longitude, puntoA.latitude],
       },
-      direccionTexto: direccionA, // Volvemos a guardar solo la calle principal en el store
+      direccionTexto: direccionA,
     });
   };
 
@@ -248,12 +255,13 @@ export default function PasoUbicacion() {
             initialRegion={{
               latitude: puntoA.latitude,
               longitude: puntoA.longitude,
-              latitudeDelta: 0.001,
-              longitudeDelta: 0.001,
+              latitudeDelta: 0.005,
+              longitudeDelta: 0.005,
             }}
             showsUserLocation={true}
             onPress={handleMapPress}
           >
+            {/* Marcador Inicio / Punto Fijo */}
             <Marker
               coordinate={puntoA}
               draggable
@@ -265,6 +273,7 @@ export default function PasoUbicacion() {
               <Ionicons name="location" size={38} color="#6347D1" />
             </Marker>
 
+            {/* Marcador Fin del Tramo */}
             {esTramo && puntoB && (
               <Marker
                 coordinate={puntoB}
@@ -278,17 +287,19 @@ export default function PasoUbicacion() {
               </Marker>
             )}
 
-            {esTramo && puntoB && (
+            {esTramo && puntoB && coordenadasRutaVisual.length > 0 && (
               <Polyline
-                coordinates={[puntoA, puntoB]}
+                coordinates={coordenadasRutaVisual}
                 strokeColor="#6347D1"
-                strokeWidth={4}
+                strokeWidth={5}
+                lineDashPattern={[0]}
               />
             )}
           </MapView>
         )}
       </View>
 
+      {/* Botones de Control de Modo */}
       <View style={styles.actionRow}>
         <TouchableOpacity
           style={[styles.modeBtn, !esTramo && styles.modeBtnActive]}
@@ -313,6 +324,7 @@ export default function PasoUbicacion() {
         </TouchableOpacity>
       </View>
 
+      {/* Tarjeta de Resumen Visual */}
       <View style={styles.summaryCard}>
         <View style={styles.headerCardRow}>
           <Text style={styles.cardTitle}>Dirección detectada</Text>

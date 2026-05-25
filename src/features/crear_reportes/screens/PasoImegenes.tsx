@@ -1,8 +1,10 @@
 import { Ionicons } from "@expo/vector-icons";
+import * as ImagePicker from "expo-image-picker";
 import React, { useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  Image,
   ScrollView,
   StyleSheet,
   Text,
@@ -12,12 +14,51 @@ import {
 
 // Importamos el servicio y los stores
 import { getAccessToken } from "../../../shared/store/authStore";
+import { uploadImageToCloudinary } from "../services/cloudinaryService";
 import { crearReporte } from "../services/reporteService";
 import { useCrearReporteStore } from "../store/crearReporteStore";
 
 export default function PasoImagenes() {
   const store = useCrearReporteStore();
   const [loading, setLoading] = useState(false);
+
+  const [imagenesLocales, setImagenesLocales] = useState<string[]>([]);
+
+  const seleccionarImagen = async () => {
+    if (imagenesLocales.length >= 5) {
+      Alert.alert(
+        "Límite alcanzado",
+        "Solo puedes subir un máximo de 5 imágenes.",
+      );
+      return;
+    }
+
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== "granted") {
+      Alert.alert(
+        "Permiso requerido",
+        "Necesitamos acceso a tus fotos para poder adjuntarlas al reporte.",
+      );
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ["images"],
+      allowsEditing: true,
+      aspect: [4, 3],
+      quality: 0.7,
+    });
+
+    if (!result.canceled) {
+      setImagenesLocales([...imagenesLocales, result.assets[0].uri]);
+    }
+  };
+
+  const eliminarImagenLocal = (indexAEliminar: number) => {
+    setImagenesLocales(
+      imagenesLocales.filter((_, index) => index !== indexAEliminar),
+    );
+  };
 
   const publicar = async () => {
     const token = getAccessToken();
@@ -40,22 +81,33 @@ export default function PasoImagenes() {
 
     setLoading(true);
 
-    const body = {
-      titulo: store.titulo,
-      descripcion: store.descripcion,
-      tipo_reporte: store.tipo_reporte || "",
-      gravedad_reporte: store.gravedad_reporte || "",
-      geom: store.geom,
-      url_imagen: [],
-    };
-
     try {
+      let urlsDeInternet: string[] = [];
+      if (imagenesLocales.length > 0) {
+        const promesasSubida = imagenesLocales.map((uri) =>
+          uploadImageToCloudinary(uri),
+        );
+        urlsDeInternet = await Promise.all(promesasSubida);
+      }
+
+      const body = {
+        titulo: store.titulo,
+        descripcion: store.descripcion,
+        tipo_reporte: store.tipo_reporte || "",
+        gravedad_reporte: store.gravedad_reporte || "",
+        geom: store.geom,
+        url_imagen: urlsDeInternet,
+      };
+
       const res = await crearReporte(body, token);
 
       Alert.alert("¡Éxito!", res.message || "Reporte creado correctamente", [
         {
           text: "Volver al inicio",
-          onPress: () => store.reset(),
+          onPress: () => {
+            setImagenesLocales([]);
+            store.reset();
+          },
         },
       ]);
     } catch (e: any) {
@@ -112,25 +164,38 @@ export default function PasoImagenes() {
   return (
     <View style={styles.mainContainer}>
       <ScrollView contentContainerStyle={styles.scrollContent}>
-        {/* Sección de Imágenes */}
         <Text style={styles.sectionTitle}>
           Fotos del incidente (opcional, máx. 5)
         </Text>
+
         <View style={styles.imageGrid}>
-          <TouchableOpacity
-            style={styles.addCard}
-            onPress={() =>
-              Alert.alert(
-                "Próximamente",
-                "La carga de imágenes se habilitará pronto.",
-              )
-            }
-          >
-            <Ionicons name="add" size={30} color="#999" />
-            <Text style={styles.addText}>Agregar</Text>
-          </TouchableOpacity>
+          {imagenesLocales.map((uri, index) => (
+            <View key={index} style={styles.imageCard}>
+              <Image source={{ uri }} style={styles.imagePreview} />
+              <TouchableOpacity
+                style={styles.deleteBadge}
+                onPress={() => eliminarImagenLocal(index)}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="close" size={14} color="white" />
+              </TouchableOpacity>
+            </View>
+          ))}
+
+          {imagenesLocales.length < 5 && (
+            <TouchableOpacity
+              style={styles.addCard}
+              onPress={seleccionarImagen}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="add" size={30} color="#999" />
+              <Text style={styles.addText}>Agregar</Text>
+            </TouchableOpacity>
+          )}
         </View>
-        <Text style={styles.imageCount}>0 de 5 imágenes cargadas.</Text>
+        <Text style={styles.imageCount}>
+          {imagenesLocales.length} de 5 imágenes cargadas.
+        </Text>
 
         {/* Sección Resumen */}
         <Text style={styles.sectionTitle}>Resumen del reporte</Text>
@@ -169,7 +234,7 @@ export default function PasoImagenes() {
             </View>
           </View>
 
-          {/* Fila de Ubicación Optimizada */}
+          {/* Fila de Ubicación */}
           <View
             style={[
               styles.summaryRow,
@@ -233,7 +298,36 @@ const styles = StyleSheet.create({
   },
   imageGrid: {
     flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 12,
     marginBottom: 10,
+  },
+  imageCard: {
+    width: 100,
+    height: 100,
+    borderRadius: 15,
+    position: "relative",
+  },
+  imagePreview: {
+    width: "100%",
+    height: "100%",
+    borderRadius: 15,
+  },
+  deleteBadge: {
+    position: "absolute",
+    top: -5,
+    right: -5,
+    backgroundColor: "#FF4763",
+    borderRadius: 12,
+    width: 22,
+    height: 22,
+    justifyContent: "center",
+    alignItems: "center",
+    elevation: 3,
+    shadowColor: "#000",
+    shadowOpacity: 0.2,
+    shadowRadius: 2,
+    shadowOffset: { width: 0, height: 1 },
   },
   addCard: {
     width: 100,
@@ -324,7 +418,6 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: "bold",
   },
-  /* NUEVOS ESTILOS PARA LA DETECCION VISUAL DE UBICACION */
   ubicacionDetalleContainer: {
     flex: 2,
     alignItems: "flex-end",

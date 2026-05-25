@@ -2,7 +2,7 @@ import { Platform } from "react-native";
 
 const DEFAULT_API_URL =
   Platform.OS === "android"
-    ? "http://192.168.1.8:8000/api/v1"
+    ? "http://192.168.1.12:8000/api/v1"
     : "http://localhost:8000/api/v1";
 
 const API_URL = (process.env.EXPO_PUBLIC_API_URL ?? DEFAULT_API_URL).replace(
@@ -10,15 +10,14 @@ const API_URL = (process.env.EXPO_PUBLIC_API_URL ?? DEFAULT_API_URL).replace(
   "",
 );
 
-// CORRECCIÓN AQUÍ: Modificamos el tipo para soportar LineString (Tramos)
 export type CrearReportePayload = {
   titulo: string;
   descripcion: string;
   tipo_reporte: string;
   gravedad_reporte: string;
   geom: {
-    type: "Point" | "LineString"; // <-- Permite ambos tipos
-    coordinates: number[] | number[][]; // <-- Permite [lng, lat] o [[lng, lat], [lng, lat]]
+    type: "Point" | "LineString";
+    coordinates: number[] | number[][];
   } | null;
   url_imagen: string[];
 };
