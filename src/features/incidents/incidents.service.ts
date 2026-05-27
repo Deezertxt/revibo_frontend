@@ -2,16 +2,11 @@ import NetInfo from "@react-native-community/netinfo";
 
 import type { Incident } from "@/features/incidents/types";
 
-import { Platform } from "react-native";
+const BASE_URL = process.env.EXPO_PUBLIC_API_URL
+  ? `${process.env.EXPO_PUBLIC_API_URL.trim()}/api/v1`
+  : "https://revibo-backend.onrender.com/api/v1";
 
-const DEFAULT_API_URL =
-  Platform.OS === "android"
-    ? "http://10.0.2.2:8000/api/v1"
-    : "http://localhost:8000/api/v1";
-const API_URL = (process.env.EXPO_PUBLIC_API_URL ?? DEFAULT_API_URL).replace(
-  /\/$/,
-  "",
-);
+const API_URL = BASE_URL.replace(/\/$/, "");
 const COORDINATE_ORDER = process.env.EXPO_PUBLIC_COORDINATE_ORDER ?? "lat_lng";
 const REQUEST_TIMEOUT_MS = 12000;
 
