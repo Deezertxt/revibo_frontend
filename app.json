@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "Revibo",
-    "slug": "Revibo",
+    "slug": "revibo_frontend",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/crnjmrdiconPNG.png",
