@@ -1,7 +1,7 @@
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { Image } from 'expo-image';
 import * as Location from 'expo-location';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
     ActivityIndicator,
@@ -29,6 +29,8 @@ import {
     IncidentType,
 } from '@/features/incidents/types';
 import { getSavedMapRegion, setSavedMapRegion } from '@/features/map/map-view-state';
+import { useRoutesStore } from '@/features/rutas/store/rutasStore';
+import { ROUTE_TYPE_COLORS, ROUTE_TYPE_LABELS } from '@/features/rutas/types';
 import { useAlertsStore } from '@/shared/store/alertsStore';
 
 const PRIMARY = '#5B3FD9';
@@ -43,8 +45,13 @@ const DEFAULT_REGION: Region = {
 
 type IncidentFilter = 'todos' | IncidentType;
 
+type SearchParams = {
+  routeId?: string | string[];
+};
+
 export default function MapHomeScreen() {
   const router = useRouter();
+  const params = useLocalSearchParams<SearchParams>();
   const mapRef = useRef<MapView | null>(null);
   const insets = useSafeAreaInsets();
 
@@ -68,6 +75,10 @@ export default function MapHomeScreen() {
   const selectedAlertId = useAlertsStore((state) => state.selectedAlertId);
   const consumeSelectedAlert = useAlertsStore(
     (state) => state.consumeSelectedAlert,
+  );
+  const routeId = firstParam(params.routeId);
+  const routePreview = useRoutesStore((state) =>
+    routeId ? state.routes.find((route) => route.id === routeId) : undefined,
   );
 
   const closeIncidentDetail = () => {
@@ -342,6 +353,37 @@ export default function MapHomeScreen() {
   }, [selectedFilter, filteredIncidents]);
 
   useEffect(() => {
+    if (!mapRef.current || !routePreview || routePreview.coordinates.length === 0) {
+      return;
+    }
+
+    if (routePreview.coordinates.length === 1) {
+      const onlyPoint = routePreview.coordinates[0];
+
+      mapRef.current.animateToRegion(
+        {
+          latitude: onlyPoint.latitude,
+          longitude: onlyPoint.longitude,
+          latitudeDelta: 0.03,
+          longitudeDelta: 0.03,
+        },
+        450,
+      );
+      return;
+    }
+
+    mapRef.current.fitToCoordinates(routePreview.coordinates, {
+      edgePadding: {
+        top: 140,
+        right: 70,
+        bottom: 170,
+        left: 70,
+      },
+      animated: true,
+    });
+  }, [routePreview]);
+
+  useEffect(() => {
     if (!selectedAlertId) {
       return;
     }
@@ -402,6 +444,33 @@ export default function MapHomeScreen() {
         rotateEnabled
         pitchEnabled
         onRegionChangeComplete={(region) => setSavedMapRegion(region)}>
+        {routePreview?.coordinates.length ? (
+          <>
+            {routePreview.coordinates.length > 1 ? (
+              <Polyline
+                coordinates={routePreview.coordinates}
+                strokeColor={ROUTE_TYPE_COLORS[routePreview.routeType]}
+                strokeWidth={5}
+                lineDashPattern={routePreview.routeType === 'alternativa' ? [8, 6] : undefined}
+              />
+            ) : null}
+
+            <Marker
+              coordinate={routePreview.coordinates[0]}
+              pinColor={ROUTE_TYPE_COLORS[routePreview.routeType]}
+              title={routePreview.name}
+            />
+
+            {routePreview.coordinates.length > 1 ? (
+              <Marker
+                coordinate={routePreview.coordinates[routePreview.coordinates.length - 1]}
+                pinColor={ROUTE_TYPE_COLORS[routePreview.routeType]}
+                title={`${routePreview.name} · destino`}
+              />
+            ) : null}
+          </>
+        ) : null}
+
         {filteredIncidents.map((incident) => {
           if (incident.geometryType === 'Point') {
             return (
@@ -438,6 +507,20 @@ export default function MapHomeScreen() {
           );
         })}
       </MapView>
+
+      {routePreview ? (
+        <View style={[styles.routePreviewBanner, { top: insets.top + 112 }]}>
+          <View style={styles.routePreviewBadge}>
+            <MaterialIcons name="alt-route" size={14} color="#FFFFFF" />
+          </View>
+          <View style={styles.routePreviewTextBlock}>
+            <Text style={styles.routePreviewTitle}>{routePreview.name}</Text>
+            <Text style={styles.routePreviewSubtitle}>
+              {ROUTE_TYPE_LABELS[routePreview.routeType]} · {Math.round(routePreview.distanceKm)} km
+            </Text>
+          </View>
+        </View>
+      ) : null}
 
       <Pressable
         onPress={centerToUserLocation}
@@ -616,6 +699,14 @@ function buildProgress(startAt: string, endAt: string) {
   };
 }
 
+function firstParam(value: string | string[] | undefined): string | undefined {
+  if (Array.isArray(value)) {
+    return value[0];
+  }
+
+  return value;
+}
+
 function StatusChip({ text }: { text: string }) {
   return (
     <View style={styles.statusChip}>
@@ -775,6 +866,48 @@ const styles = StyleSheet.create({
   infoText: {
     color: '#FFFFFF',
     fontSize: 13,
+  },
+  routePreviewBanner: {
+    position: 'absolute',
+    left: 14,
+    right: 14,
+    borderRadius: 16,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    backgroundColor: 'rgba(91, 63, 217, 0.94)',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    shadowColor: '#2E1E82',
+    shadowOpacity: 0.22,
+    shadowRadius: 10,
+    shadowOffset: {
+      width: 0,
+      height: 4,
+    },
+    elevation: 4,
+  },
+  routePreviewBadge: {
+    width: 30,
+    height: 30,
+    borderRadius: 10,
+    backgroundColor: 'rgba(255,255,255,0.18)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  routePreviewTextBlock: {
+    flex: 1,
+  },
+  routePreviewTitle: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  routePreviewSubtitle: {
+    color: '#E8E3FF',
+    fontSize: 12,
+    fontWeight: '600',
+    marginTop: 2,
   },
   detailSheet: {
     position: 'absolute',
