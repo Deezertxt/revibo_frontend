@@ -4,7 +4,7 @@
     "slug": "Revibo",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/ratchet.png",
+    "icon": "./assets/images/crnjmrdiconPNG.png",
     "scheme": "revibofrontend",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
@@ -38,7 +38,7 @@
       [
         "expo-splash-screen",
         {
-          "image": "./assets/images/crjmrd.png",
+          "image": "./assets/images/RATCHETSPLASHPNG.png",
           "imageWidth": 200,
           "resizeMode": "contain",
           "backgroundColor": "#7C63E8",
