@@ -2,7 +2,7 @@ import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { Image } from 'expo-image';
 import * as Location from 'expo-location';
 import { useRouter } from 'expo-router';
-import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
     ActivityIndicator,
     Pressable,
@@ -29,6 +29,7 @@ import {
     IncidentType,
 } from '@/features/incidents/types';
 import { getSavedMapRegion, setSavedMapRegion } from '@/features/map/map-view-state';
+import { useAlertsStore } from '@/shared/store/alertsStore';
 
 const PRIMARY = '#5B3FD9';
 const LOCATION_FAB_BOTTOM_OFFSET = 8;
@@ -60,6 +61,14 @@ export default function MapHomeScreen() {
   const restoredRegion = getSavedMapRegion();
   const hasAppliedInitialFitRef = useRef(Boolean(restoredRegion));
   const handleTouchStartY = useRef<number | null>(null);
+  const syncAlertsFromIncidents = useAlertsStore(
+    (state) => state.syncFromIncidents,
+  );
+  const alerts = useAlertsStore((state) => state.alerts);
+  const selectedAlertId = useAlertsStore((state) => state.selectedAlertId);
+  const consumeSelectedAlert = useAlertsStore(
+    (state) => state.consumeSelectedAlert,
+  );
 
   const closeIncidentDetail = () => {
     setSelectedIncident(null);
@@ -140,7 +149,7 @@ export default function MapHomeScreen() {
     }
   };
 
-  const openIncidentDetail = (incident: Incident) => {
+  const openIncidentDetail = useCallback((incident: Incident) => {
     setSheetExpanded(false);
     setSelectedIncident(incident);
 
@@ -153,7 +162,7 @@ export default function MapHomeScreen() {
       },
       450
     );
-  };
+  }, []);
 
   useEffect(() => {
     let locationSubscription: Location.LocationSubscription | null = null;
@@ -171,6 +180,7 @@ export default function MapHomeScreen() {
         }
 
         setIncidents(activeIncidents);
+        syncAlertsFromIncidents(activeIncidents, null);
 
         const locationPermission = await Location.requestForegroundPermissionsAsync();
 
@@ -188,6 +198,11 @@ export default function MapHomeScreen() {
           }
 
           setUserCoordinate({
+            latitude: position.coords.latitude,
+            longitude: position.coords.longitude,
+          });
+
+          syncAlertsFromIncidents(activeIncidents, {
             latitude: position.coords.latitude,
             longitude: position.coords.longitude,
           });
@@ -325,6 +340,23 @@ export default function MapHomeScreen() {
       }
     );
   }, [selectedFilter, filteredIncidents]);
+
+  useEffect(() => {
+    if (!selectedAlertId) {
+      return;
+    }
+
+    const alertIncident =
+      alerts.find((alert) => alert.id === selectedAlertId)?.incident ??
+      incidents.find((incident) => incident.id === selectedAlertId);
+
+    if (!alertIncident) {
+      return;
+    }
+
+    openIncidentDetail(alertIncident);
+    consumeSelectedAlert();
+  }, [consumeSelectedAlert, incidents, openIncidentDetail, selectedAlertId]);
 
   return (
     <View style={styles.container}>

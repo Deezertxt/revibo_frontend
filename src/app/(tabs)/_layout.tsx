@@ -1,4 +1,5 @@
 import { HapticTab } from "@/shared/components/haptic-tab";
+import { useAlertsStore } from "@/shared/store/alertsStore";
 import { getAuthSession } from "@/shared/store/authStore";
 import FontAwesome from "@expo/vector-icons/FontAwesome";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
@@ -12,6 +13,9 @@ const INACTIVE = "#B7B4C4";
 export default function TabLayout() {
   const insets = useSafeAreaInsets();
   const pathname = usePathname();
+  const unreadAlertCount = useAlertsStore(
+    (state) => state.alerts.filter((alert) => alert.unread).length,
+  );
 
   const [rolActual, setRolActual] = useState<string | null | undefined>(
     undefined,
@@ -53,8 +57,19 @@ export default function TabLayout() {
         options={{
           title: "Alertas",
           tabBarIcon: ({ color }) => (
-            <MaterialIcons name="notifications-none" size={24} color={color} />
+            <MaterialIcons name="notifications" size={24} color={color} />
           ),
+          tabBarBadge: unreadAlertCount > 0 ? unreadAlertCount : undefined,
+          tabBarBadgeStyle: {
+            backgroundColor: ACTIVE,
+            color: "#FFFFFF",
+            fontSize: 11,
+            fontWeight: "700",
+            minWidth: 18,
+            height: 18,
+            borderRadius: 9,
+            paddingHorizontal: 4,
+          },
         }}
       />
       {/* CREAR REPORTES */}
