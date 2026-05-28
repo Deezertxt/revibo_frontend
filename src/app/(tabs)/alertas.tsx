@@ -110,32 +110,35 @@ export default function AlertasScreen() {
   );
 
   return (
-    <View style={styles.screen}>
-      <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
+    <View style={[styles.screen, { paddingTop: insets.top }]}>
+      <View style={styles.header}>
         <View style={styles.headerCopy}>
           <Text style={styles.kicker}>Centro de notificaciones</Text>
           <Text style={styles.title}>Alertas</Text>
           <Text style={styles.subtitle}>Toca para ir al reporte</Text>
+          
         </View>
 
-        <View style={styles.headerStatsRow}>
-          <View style={styles.headerStatChip}>
-            <View style={[styles.headerStatDot, { backgroundColor: '#FFD94D' }]} />
-            <Text style={styles.headerStatText}>{unreadCount} activas</Text>
-          </View>
-          <View style={[styles.headerStatChip, styles.headerStatChipSoft]}>
-            <View style={[styles.headerStatDot, { backgroundColor: '#D8D0FF' }]} />
-            <Text style={styles.headerStatText}>{reviewedCount} revisadas</Text>
-          </View>
-        </View>
+        <View style={styles.headerChipsRow}>
+          <Pressable style={[styles.headerStatChip, styles.chipSmall]}>
+            <View style={styles.headerStatInnerRow}>
+              <View style={[styles.headerStatDot, { backgroundColor: '#FFD94D' }]} />
+              <Text style={styles.headerStatText}>{unreadCount} activas</Text>
+            </View>
+          </Pressable>
 
-        <Pressable
-          onPress={markAllAsRead}
-          style={({ pressed }) => [styles.markAllButton, pressed && styles.pressed]}
-        >
-          <MaterialIcons name="done-all" size={18} color={PRIMARY} />
-          <Text style={styles.markAllText}>Marcar todo</Text>
-        </Pressable>
+          <Pressable style={[styles.headerStatChip, styles.headerStatChipSoft, styles.chipSmall]}>
+            <View style={styles.headerStatInnerRow}>
+              <View style={[styles.headerStatDot, { backgroundColor: '#D8D0FF' }]} />
+              <Text style={styles.headerStatText}>{reviewedCount} revisadas</Text>
+            </View>
+          </Pressable>
+
+          <Pressable onPress={markAllAsRead} style={({ pressed }) => [styles.headerStatChip, styles.markAllAsChip, styles.chipLarge, pressed && styles.pressed]}>
+            <MaterialIcons style={styles.chipIcon} name="done-all" size={14} color="#FFFFFF" />
+            <Text numberOfLines={1} ellipsizeMode="tail" style={[styles.headerStatText, { lineHeight: 18 }]}>Marcar todo</Text>
+          </Pressable>
+        </View>
       </View>
 
       <View style={styles.content}>
@@ -361,15 +364,16 @@ const styles = StyleSheet.create({
     backgroundColor: SURFACE,
   },
   header: {
-    paddingHorizontal: 18,
-    paddingBottom: 14,
-    gap: 14,
     backgroundColor: PRIMARY,
+    paddingHorizontal: 18,
+    paddingTop: 16,
+    paddingBottom: 22,
     borderBottomLeftRadius: 28,
     borderBottomRightRadius: 28,
+    gap: 4,
   },
   headerCopy: {
-    gap: 6,
+    gap: 4,
   },
   kicker: {
     color: '#D9D2FF',
@@ -392,17 +396,20 @@ const styles = StyleSheet.create({
   headerStatsRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
+    gap: 6,
     marginTop: -2,
   },
   headerStatChip: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
     backgroundColor: 'rgba(255, 255, 255, 0.22)',
     borderRadius: 999,
     paddingHorizontal: 12,
-    paddingVertical: 7,
+    paddingVertical: 8,
+    minHeight: 36,
+    minWidth: 130,
+    justifyContent: 'center',
+    flexWrap: 'nowrap',
   },
   headerStatChipSoft: {
     backgroundColor: 'rgba(255, 255, 255, 0.16)',
@@ -414,8 +421,10 @@ const styles = StyleSheet.create({
   },
   headerStatText: {
     color: '#FFFFFF',
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '700',
+    flexShrink: 1,
+    minWidth: 0,
   },
   markAllButton: {
     alignSelf: 'flex-start',
@@ -431,9 +440,69 @@ const styles = StyleSheet.create({
     color: PRIMARY,
     fontWeight: '700',
   },
+  headerRowTop: {
+    marginTop: 6,
+  },
+  headerChipsRow: {
+    flexDirection: 'row',
+    gap: 10,
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginHorizontal: -12,
+  },
+  chipSmall: {
+    flex: 0.9,
+    minWidth: 110,
+  },
+  chipLarge: {
+    flex: 1.6,
+    minWidth: 160,
+  },
+  chipEqual: {
+    flex: 1,
+  },
+  headerStatInnerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+  },
+  markAllButtonCompact: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: 'rgba(255, 255, 255, 0.22)',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+    // match chips exactly
+    shadowColor: 'transparent',
+  },
+  markAllTextCompact: {
+    color: '#FFFFFF',
+    fontWeight: '700',
+    fontSize: 13,
+  },
+  markAllAsChip: {
+    backgroundColor: 'rgba(255, 255, 255, 0.22)',
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    minHeight: 36,
+    minWidth: 130,
+    justifyContent: 'center',
+    flexWrap: 'nowrap',
+    shadowColor: 'transparent',
+  },
+  chipIcon: {
+    marginRight: 6,
+  },
   content: {
     flex: 1,
-    paddingTop: 14,
+    paddingTop: 6,
   },
   filtersRow: {
     paddingHorizontal: 16,
@@ -470,6 +539,7 @@ const styles = StyleSheet.create({
   filterChipLabelInactive: {
     color: PRIMARY,
   },
+  
   centerState: {
     alignItems: 'center',
     justifyContent: 'center',

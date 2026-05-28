@@ -58,6 +58,17 @@ export default function MapHomeScreen() {
   const [incidents, setIncidents] = useState<Incident[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedFilter, setSelectedFilter] = useState<IncidentFilter>('todos');
+  const [selectedSeverities, setSelectedSeverities] = useState<Incident['severity'][]>([
+    'Critico',
+    'Alto',
+    'Medio',
+    'Bajo',
+  ]);
+  const [tempSelectedSeverities, setTempSelectedSeverities] = useState<Incident['severity'][]>(selectedSeverities);
+  const [showFilterModal, setShowFilterModal] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [suggestions, setSuggestions] = useState<Array<any>>([]);
+  const [loadingSuggestions, setLoadingSuggestions] = useState(false);
   const [userCoordinate, setUserCoordinate] = useState<{ latitude: number; longitude: number } | null>(
     null
   );
@@ -274,12 +285,15 @@ export default function MapHomeScreen() {
   }, [incidents]);
 
   const filteredIncidents = useMemo(() => {
-    if (selectedFilter === 'todos') {
-      return incidents;
-    }
+    // filter by type
+    let list =
+      selectedFilter === 'todos' ? incidents : incidents.filter((incident) => incident.type === selectedFilter);
 
-    return incidents.filter((incident) => incident.type === selectedFilter);
-  }, [incidents, selectedFilter]);
+    // filter by selected severities
+    list = list.filter((incident) => selectedSeverities.includes(incident.severity));
+
+    return list;
+  }, [incidents, selectedFilter, selectedSeverities]);
 
   const selectedIncidentProgress = useMemo(() => {
     if (!selectedIncident?.endAt) {
@@ -400,15 +414,72 @@ export default function MapHomeScreen() {
     consumeSelectedAlert();
   }, [consumeSelectedAlert, incidents, openIncidentDetail, selectedAlertId]);
 
+  // Search suggestions (Nominatim) with debounce
+  useEffect(() => {
+    if (!searchQuery || searchQuery.trim().length === 0) {
+      setSuggestions([]);
+      setLoadingSuggestions(false);
+      return;
+    }
+
+    let cancelled = false;
+    const controller = new AbortController();
+
+    const timer = setTimeout(async () => {
+      try {
+        setLoadingSuggestions(true);
+        const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(
+          searchQuery
+        )}&addressdetails=1&limit=6`;
+
+        const res = await fetch(url, {
+          signal: controller.signal,
+          headers: {
+            'Accept-Language': 'es',
+            'User-Agent': 'Revibo/1.0',
+          },
+        });
+
+        if (cancelled) return;
+
+        if (!res.ok) {
+          setSuggestions([]);
+          setLoadingSuggestions(false);
+          return;
+        }
+
+        const data = await res.json();
+        setSuggestions(Array.isArray(data) ? data : []);
+      } catch (e) {
+        if ((e as any)?.name === 'AbortError') return;
+        setSuggestions([]);
+      } finally {
+        if (!cancelled) setLoadingSuggestions(false);
+      }
+    }, 350);
+
+    return () => {
+      cancelled = true;
+      controller.abort();
+      clearTimeout(timer);
+    };
+  }, [searchQuery]);
+
   return (
     <View style={styles.container}>
       <View style={[styles.topPanel, { paddingTop: insets.top + 12 }]}>
-        <TextInput
-          editable={false}
-          placeholder="Buscar direccion o destino..."
-          placeholderTextColor="#D6D0FF"
-          style={styles.searchInput}
-        />
+        <View style={styles.searchRow}>
+          <TextInput
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            placeholder="Buscar calle, avenida o carretera"
+            placeholderTextColor="#D6D0FF"
+            style={styles.searchInput}
+          />
+          <Pressable onPress={() => setShowFilterModal(true)} style={styles.filterButton}>
+            <MaterialIcons name="filter-list" size={22} color="#FFFFFF" />
+          </Pressable>
+        </View>
 
         <ScrollView
           horizontal
@@ -430,7 +501,71 @@ export default function MapHomeScreen() {
             />
           ))}
         </ScrollView>
+        {searchQuery.length > 0 ? (
+          <View style={styles.suggestionsBoxInline}>
+            {loadingSuggestions ? (
+              <View style={styles.suggestionRow}><ActivityIndicator size="small" color="#6F61DD" /></View>
+            ) : (
+              suggestions.map((s) => (
+                <Pressable
+                  key={s.place_id ?? s.osm_id ?? s.lat + s.lon}
+                  onPress={() => {
+                    const lat = parseFloat(s.lat);
+                    const lon = parseFloat(s.lon);
+                    mapRef.current?.animateToRegion({ latitude: lat, longitude: lon, latitudeDelta: 0.01, longitudeDelta: 0.01 }, 450);
+                    setSuggestions([]);
+                    setSearchQuery('');
+                  }}
+                  style={styles.suggestionRow}>
+                  <Text style={styles.suggestionText}>{s.display_name}</Text>
+                </Pressable>
+              ))
+            )}
+          </View>
+        ) : null}
       </View>
+
+
+      {showFilterModal ? (
+        <View style={styles.filterModalOverlay}>
+          <View style={styles.filterModal}>
+            <View style={styles.filterHeader}>
+              <Text style={styles.filterTitle}>Filtrar incidentes</Text>
+              <Pressable onPress={() => { setTempSelectedSeverities(['Critico','Alto','Medio','Bajo']); }}>
+                <Text style={styles.clearText}>Limpiar</Text>
+              </Pressable>
+            </View>
+
+            <Text style={styles.filterSectionTitle}>GRAVEDAD</Text>
+            <View style={styles.filterSeverityRow}>
+              {(['Critico','Alto','Medio','Bajo'] as Incident['severity'][]).map((sev) => (
+                <Pressable
+                  key={sev}
+                  onPress={() => {
+                    setTempSelectedSeverities((prev) =>
+                      prev.includes(sev) ? prev.filter((p) => p !== sev) : [...prev, sev]
+                    );
+                  }}
+                  style={[
+                    styles.severitySelectChip,
+                    tempSelectedSeverities.includes(sev) ? styles.severitySelectChipActive : undefined,
+                  ]}>
+                  <Text style={styles.severitySelectText}>{INCIDENT_SEVERITY_LABELS[sev]}</Text>
+                </Pressable>
+              ))}
+            </View>
+
+            <Pressable
+              style={styles.applyFiltersButton}
+              onPress={() => {
+                setSelectedSeverities(tempSelectedSeverities);
+                setShowFilterModal(false);
+              }}>
+              <Text style={styles.applyFiltersText}>Aplicar filtros</Text>
+            </Pressable>
+          </View>
+        </View>
+      ) : null}
 
       <MapView
         ref={mapRef}
@@ -776,6 +911,8 @@ const styles = StyleSheet.create({
     height: 40,
     borderRadius: 12,
     paddingHorizontal: 14,
+    paddingRight: 56,
+    flex: 1,
     backgroundColor: 'rgba(255,255,255,0.14)',
     color: '#FFFFFF',
     fontSize: 14,
@@ -813,6 +950,134 @@ const styles = StyleSheet.create({
   },
   filterChipLabelInactive: {
     color: '#F4F0FF',
+  },
+  searchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    position: 'relative',
+  },
+  filterButton: {
+    width: 42,
+    height: 40,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    position: 'absolute',
+    right: 6,
+    top: 0,
+  },
+  suggestionsBox: {
+    position: 'absolute',
+    left: 14,
+    right: 14,
+    borderRadius: 12,
+    backgroundColor: '#FFFFFF',
+    zIndex: 30,
+    paddingVertical: 6,
+    shadowColor: '#000',
+    shadowOpacity: 0.08,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 6,
+  },
+  suggestionsBoxInline: {
+    marginTop: 8,
+    borderRadius: 12,
+    backgroundColor: '#FFFFFF',
+    zIndex: 30,
+    paddingVertical: 6,
+    shadowColor: '#000',
+    shadowOpacity: 0.08,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 6,
+  },
+  suggestionRow: {
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F0EEF8',
+  },
+  suggestionText: {
+    color: '#2F2B3A',
+  },
+  filterModalOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 40,
+  },
+  filterModal: {
+    width: '92%',
+    borderRadius: 14,
+    backgroundColor: '#FFFFFF',
+    padding: 18,
+    shadowColor: '#000',
+    shadowOpacity: 0.12,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 8,
+  },
+  filterHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  filterTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#2F2B3A',
+  },
+  clearText: {
+    color: '#6F61DD',
+    fontWeight: '700',
+  },
+  filterSectionTitle: {
+    color: '#4C4958',
+    fontWeight: '700',
+    marginTop: 8,
+    marginBottom: 8,
+  },
+  filterSeverityRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 12,
+  },
+  severitySelectChip: {
+    backgroundColor: '#F4F0FF',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 12,
+  },
+  severitySelectChipActive: {
+    backgroundColor: 'rgba(91,63,217,0.12)',
+    borderWidth: 1,
+    borderColor: '#6F61DD',
+  },
+  severitySelectText: {
+    color: '#2F2B3A',
+    fontWeight: '700',
+  },
+  applyFiltersButton: {
+    marginTop: 6,
+    backgroundColor: 'transparent',
+    borderWidth: 1,
+    borderColor: '#6F61DD',
+    paddingVertical: 12,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  applyFiltersText: {
+    color: '#6F61DD',
+    fontWeight: '800',
   },
   map: {
     flex: 1,
