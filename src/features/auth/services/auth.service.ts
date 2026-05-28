@@ -1,13 +1,15 @@
 import { Platform } from "react-native";
 
-const DEFAULT_API_URL =
+const LOCAL_API_URL =
   Platform.OS === "android"
-    ? "http://10.0.2.2:8000/api/v1"
+    ? "http://192.168.1.12:8000/api/v1"
     : "http://localhost:8000/api/v1";
-const API_URL = (process.env.EXPO_PUBLIC_API_URL ?? DEFAULT_API_URL).replace(
-  /\/$/,
-  "",
-);
+
+const BASE_URL = process.env.EXPO_PUBLIC_API_URL
+  ? `${process.env.EXPO_PUBLIC_API_URL.trim()}/api/v1`
+  : "https://revibo-backend.onrender.com/api/v1";
+
+const API_URL = BASE_URL.replace(/\/$/, "");
 
 type RegisterPayload = {
   nombre: string;
@@ -42,8 +44,6 @@ export type AuthResult = {
   accessToken: string;
 };
 
-//Login
-
 export async function loginUser(payload: LoginPayload): Promise<AuthResult> {
   const response = await fetch(`${API_URL}/login`, {
     method: "POST",
@@ -75,8 +75,6 @@ export async function loginUser(payload: LoginPayload): Promise<AuthResult> {
     accessToken: responseBody.access_token,
   };
 }
-
-// Registrar
 
 export async function registerUser(
   payload: RegisterPayload,
@@ -112,8 +110,6 @@ export async function registerUser(
   };
 }
 
-// Logout
-
 export async function logoutUser(token: string): Promise<string> {
   const response = await fetch(`${API_URL}/logout`, {
     method: "POST",
@@ -126,7 +122,6 @@ export async function logoutUser(token: string): Promise<string> {
 
   const responseBody = await response.json().catch(() => null);
 
-  // Si el servidor responde 401 o 500
   if (!response.ok) {
     const errorMsg = responseBody?.message ?? "Error al cerrar sesión.";
     throw new Error(errorMsg);

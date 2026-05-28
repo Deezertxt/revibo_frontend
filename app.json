@@ -1,10 +1,10 @@
 {
   "expo": {
-    "name": "revibo_frontend",
-    "slug": "revibo_frontend",
+    "name": "Revibo",
+    "slug": "Revibo",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/icon.png",
+    "icon": "./assets/images/ratchet.png",
     "scheme": "revibofrontend",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
@@ -38,10 +38,10 @@
       [
         "expo-splash-screen",
         {
-          "image": "./assets/images/splash-icon.png",
+          "image": "./assets/images/crjmrd.png",
           "imageWidth": 200,
           "resizeMode": "contain",
-          "backgroundColor": "#ffffff",
+          "backgroundColor": "#7C63E8",
           "dark": {
             "backgroundColor": "#000000"
           }
