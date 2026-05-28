@@ -6,15 +6,8 @@ import { Platform } from "react-native";
 import * as Location from "expo-location";
 import { Double } from "react-native/Libraries/Types/CodegenTypes";
 
-/* const DEFAULT_API_URL =
-  Platform.OS === "android"
-    ? "http://10.0.2.2:8000/api/v1"
-    : "http://localhost:8000/api/v1";
-const API_URL = (process.env.EXPO_PUBLIC_API_URL ?? DEFAULT_API_URL).replace(
-  /\/$/,
-  "",
-); */
-
+const API_URL_DEPLOY = "https://revibo-backend.onrender.com/api/v1/device-token";
+ 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
     shouldShowAlert: true,
@@ -60,7 +53,7 @@ async function registerForPushNotifications() {
 
     const { status: existingStatus} = await Notifications.getPermissionsAsync(); // se consulta si se tiene permisos de noti
 
-    console.log("existing status", existingStatus);
+    console.log("existing status: ", existingStatus);
 
     let finalStatus = existingStatus;
 
@@ -74,7 +67,7 @@ async function registerForPushNotifications() {
         return;
     }
 
-    console.log("final status", finalStatus);
+    console.log("final status: ", finalStatus);
 
     //console.log("exponcngf:   ", Constants.expoConfig);
     // ---------*-  Permisos de ubicacion -*----------
@@ -86,24 +79,36 @@ async function registerForPushNotifications() {
     const lat = location.coords.latitude;
     const lng = location.coords.longitude;
 
-    console.log("primer lat, lng", lat, lng);
+    console.log("primer lat, lng:  ", lat, lng);
 
-    try {
-        const tokenData = await Notifications.getExpoPushTokenAsync({
-            projectId: Constants.expoConfig?.extra?.eas?.projectId,
-        });
-        const token = tokenData.data;
-        console.log("Expo push token", token);
-        await sendTokenToBackend(token, lat, lng);
-    } catch (error) {
-        console.log("Error al obtener el token de notificación", error);
+    let token = null;
+
+    for(let i = 0; i < 5; i++){
+        try{
+            const tokenData = await Notifications.getExpoPushTokenAsync({
+                projectId: Constants.expoConfig?.extra?.eas?.projectId,
+            });
+            token = tokenData.data;
+            break;
+        }catch(error){
+            console.log(`Inetnto: ${i+1} fallido`, error);
+            await new Promise(resolve => setTimeout(resolve, 6000));
+        }
     }
-    //const tokenData = await Notifications.getExpoPushTokenAsync();
+
+    if(!token){
+        console.log("no se pudo obtener token push");
+        return;
+    }
+
+    console.log("Expo piush token: ", token);
+    await sendTokenToBackend(token, lat, lng);
 }
 
 async function sendTokenToBackend(token: string, lat: Double, lng: Double) {
     try {
-        const response = await fetch('https://revibo-backend.onrender.com/api/v1/device-token', {
+        //console.log("ENVIANDO.. TOKEN FIRST TIME: ", token, "LAT: ", lat, "LNG: ", lng);
+        const response = await fetch(API_URL_DEPLOY, {
             method: "POST",
             headers: {
                 "Content-Type": "application/json"
@@ -111,8 +116,8 @@ async function sendTokenToBackend(token: string, lat: Double, lng: Double) {
             body: JSON.stringify({
                 token,
                 platform: Platform.OS,
-                lat: lat,
-                lng: lng
+                lng: lng,
+                lat: lat
             })
         });
 
