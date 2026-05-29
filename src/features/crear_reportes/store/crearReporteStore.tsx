@@ -12,7 +12,8 @@ export type TipoReporte =
   | "incendio"
   | "derrumbe"
   | "deslizamiento"
-  | "inundacion";
+  | "inundacion"
+  | "otro";
 
 export type GravedadReporte = "Bajo" | "Medio" | "Alto" | "Critico";
 
@@ -26,7 +27,7 @@ interface ReporteState {
     type: "Point" | "LineString";
     coordinates: any;
   } | null;
-  direccionTexto: string; // <-- 1. Agregamos el texto de la calle al estado global
+  direccionTexto: string;
   url_imagen: string[];
 
   // Acciones

@@ -23,8 +23,23 @@ const TIPOS_OPTIONS = [
     value: "cierre_programado",
     icon: "calendar-outline",
   },
-  { label: "Desvío", value: "desvío", icon: "warning-outline" }, // Nota: Ajustar según API si es necesario
+  { label: "Desvío", value: "desvío", icon: "warning-outline" },
   { label: "Otro", value: "otro", icon: "globe-outline" },
+];
+
+const TIPOS_ADICIONALES_OPTIONS = [
+  { label: "Marcha", value: "marcha", icon: "people-outline" },
+  { label: "Desfile", value: "desfile", icon: "flag-outline" },
+  { label: "Festividad", value: "festividad", icon: "wine-outline" },
+  { label: "Feria", value: "feria", icon: "storefront-outline" },
+  { label: "Incendio", value: "incendio", icon: "flame-outline" },
+  { label: "Derrumbe", value: "derrumbe", icon: "alert-circle-outline" },
+  {
+    label: "Deslizamiento",
+    value: "deslizamiento",
+    icon: "trending-down-outline",
+  },
+  { label: "Inundación", value: "inundacion", icon: "water-outline" },
 ];
 
 const GRAVEDAD_OPTIONS = [
@@ -44,10 +59,24 @@ export default function PasoInformacion() {
     setStep,
   } = useCrearReporteStore();
 
+  const esAdicional = TIPOS_ADICIONALES_OPTIONS.some(
+    (opt) => opt.value === tipo_reporte,
+  );
+  const mostrarAdicionales = tipo_reporte === "otro" || esAdicional;
+
+  const manejarSeleccionTipo = (val: string) => {
+    if (val === "otro") {
+      updateData({ tipo_reporte: tipo_reporte === "otro" ? null : "otro" });
+    } else {
+      updateData({ tipo_reporte: val as any });
+    }
+  };
+
   const esValido =
     titulo.length > 0 &&
     descripcion.length > 0 &&
     tipo_reporte &&
+    tipo_reporte !== "otro" &&
     gravedad_reporte;
 
   return (
@@ -84,13 +113,28 @@ export default function PasoInformacion() {
           <Text style={styles.charCount}>{descripcion.length} / 500</Text>
         </View>
 
+        {/* Selector Principal */}
         <Selector
           label="Tipo de reporte"
           options={TIPOS_OPTIONS}
-          selectedValue={tipo_reporte}
-          onSelect={(val) => updateData({ tipo_reporte: val })}
+          selectedValue={mostrarAdicionales ? "otro" : tipo_reporte}
+          onSelect={manejarSeleccionTipo}
         />
 
+        {/* Selector Desplegable de Adicionales */}
+        {mostrarAdicionales && (
+          <View style={styles.adicionalesContainer}>
+            <Selector
+              label="Especifique el tipo de incidente"
+              options={TIPOS_ADICIONALES_OPTIONS}
+              selectedValue={tipo_reporte === "otro" ? null : tipo_reporte}
+              onSelect={(val) => updateData({ tipo_reporte: val })}
+              columns={3}
+            />
+          </View>
+        )}
+
+        {/* Selector de Gravedad */}
         <Selector
           label="Gravedad"
           options={GRAVEDAD_OPTIONS}
@@ -149,6 +193,15 @@ const styles = StyleSheet.create({
     color: "#AAA",
     marginTop: 4,
     marginBottom: 10,
+  },
+  adicionalesContainer: {
+    marginTop: -5,
+    marginBottom: 15,
+    padding: 12,
+    backgroundColor: "#F9F9F9",
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "#F0F0F0",
   },
   btnContinuar: {
     backgroundColor: "#6347D1",
