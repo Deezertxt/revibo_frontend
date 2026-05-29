@@ -1,4 +1,5 @@
 import { HapticTab } from "@/shared/components/haptic-tab";
+import { useAlertsStore } from "@/shared/store/alertsStore";
 import { useAuthStore } from "@/shared/store/useAuthStore";
 import FontAwesome from "@expo/vector-icons/FontAwesome";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
@@ -10,6 +11,9 @@ const INACTIVE = "#B7B4C4";
 
 export default function TabLayout() {
   const insets = useSafeAreaInsets();
+  const unreadAlertCount = useAlertsStore(
+    (state) => state.alerts.filter((alert) => alert.unread).length,
+  );
   const pathname = usePathname();
   const rol = useAuthStore((state) => state.user?.rol);
 
@@ -44,11 +48,22 @@ export default function TabLayout() {
         options={{
           title: "Alertas",
           tabBarIcon: ({ color }) => (
-            <MaterialIcons name="notifications-none" size={24} color={color} />
+            <MaterialIcons name="notifications" size={24} color={color} />
           ),
+          tabBarBadge: unreadAlertCount > 0 ? unreadAlertCount : undefined,
+          tabBarBadgeStyle: {
+            backgroundColor: ACTIVE,
+            color: "#FFFFFF",
+            fontSize: 11,
+            fontWeight: "700",
+            minWidth: 18,
+            height: 18,
+            borderRadius: 9,
+            paddingHorizontal: 4,
+          },
         }}
       />
-      {/* CREAR REPORTES */}
+
       <Tabs.Screen
         name="crear_reportes"
         options={{
@@ -56,7 +71,6 @@ export default function TabLayout() {
           tabBarIcon: ({ color }) => (
             <FontAwesome name="pencil" size={24} color={color} />
           ),
-
           href:
             rol === "admin" ||
             rol === "autoridad" ||
@@ -76,7 +90,6 @@ export default function TabLayout() {
         }}
       />
 
-      {/* 5. ADMIN */}
       <Tabs.Screen
         name="admin"
         options={{

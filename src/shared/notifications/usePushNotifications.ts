@@ -1,10 +1,12 @@
-import { useEffect, useRef, useState } from "react";
-import * as Notifications from 'expo-notifications';
-import * as Device from 'expo-device';
 import Constants from 'expo-constants';
-import { Platform } from "react-native";
+import * as Device from 'expo-device';
 import * as Location from "expo-location";
-import { Double } from "react-native/Libraries/Types/CodegenTypes";
+import * as Notifications from 'expo-notifications';
+import { router } from "expo-router";
+import { useEffect, useRef } from "react";
+import { Platform } from "react-native";
+
+import { useAlertsStore } from "@/shared/store/alertsStore";
 
 const API_URL_DEPLOY = "https://revibo-backend.onrender.com/api/v1/device-token";
  
@@ -21,6 +23,9 @@ Notifications.setNotificationHandler({
 export function usePushNotifications() {
     const notificationListener = useRef<Notifications.Subscription | null>(null);
     const responseListener = useRef<Notifications.Subscription | null>(null);
+    const registerNotification = useAlertsStore((state) => state.registerNotification);
+    const openAlertOnMap = useAlertsStore((state) => state.openAlertOnMap);
+    const consumeSelectedAlert = useAlertsStore((state) => state.consumeSelectedAlert);
 
     useEffect(() => {
         registerForPushNotifications();
@@ -28,6 +33,8 @@ export function usePushNotifications() {
             Notifications.addNotificationReceivedListener(
                 notification => {
                     console.log("Notificacion recibida: ", notification);
+
+                    registerNotification(normalizeNotificationData(notification.request.content.data));
                 }
             );
 
@@ -35,14 +42,61 @@ export function usePushNotifications() {
             Notifications.addNotificationResponseReceivedListener(
                 response => {
                     console.log("Usuario pusheo :v la noti ", response);
+
+                    const payload = normalizeNotificationData(response.notification.request.content.data);
+
+                    if (payload.incidentId) {
+                        openAlertOnMap(payload.incidentId);
+                        router.replace("/(tabs)");
+                        return;
+                    }
+
+                    router.replace("/(tabs)/alertas");
                 }
             );
         
         return () => {
             notificationListener.current?.remove()
             responseListener.current?.remove()
+            consumeSelectedAlert();
         }
     }, []);
+}
+
+function normalizeNotificationData(data: Notifications.NotificationContentInput["data"]) {
+    if (!data || typeof data !== "object") {
+        return {};
+    }
+
+    const normalized = data as {
+        incidentId?: string;
+        title?: string;
+        body?: string;
+        type?: string;
+        severity?: "Bajo" | "Medio" | "Alto" | "Critico";
+        status?: "activo" | "resuelto" | "archivado";
+        authority?: string;
+        locationText?: string;
+        geometryType?: "Point" | "LineString";
+        latitude?: number | string;
+        longitude?: number | string;
+        lat?: number | string;
+        lng?: number | string;
+        startAt?: string;
+        endAt?: string;
+    };
+
+    if (!normalized.incidentId) {
+        const latitude = normalized.latitude ?? normalized.lat;
+        const longitude = normalized.longitude ?? normalized.lng;
+
+        if (latitude != null && longitude != null) {
+          const titleSeed = normalized.title ?? normalized.body ?? "alerta";
+          normalized.incidentId = `notification-${String(latitude)}-${String(longitude)}-${titleSeed}`;
+        }
+    }
+
+    return normalized;
 }
 
 async function registerForPushNotifications() {
@@ -105,7 +159,7 @@ async function registerForPushNotifications() {
     await sendTokenToBackend(token, lat, lng);
 }
 
-async function sendTokenToBackend(token: string, lat: Double, lng: Double) {
+async function sendTokenToBackend(token: string, lat: number, lng: number) {
     try {
         //console.log("ENVIANDO.. TOKEN FIRST TIME: ", token, "LAT: ", lat, "LNG: ", lng);
         const response = await fetch(API_URL_DEPLOY, {

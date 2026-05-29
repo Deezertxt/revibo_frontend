@@ -1,34 +1,36 @@
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { Image } from 'expo-image';
 import * as Location from 'expo-location';
-import { useRouter } from 'expo-router';
-import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-    ActivityIndicator,
-    Pressable,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    View,
+  ActivityIndicator,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
 } from 'react-native';
 import MapView, { Marker, Polyline, Region } from 'react-native-maps';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import {
-    ConnectivityError,
-    fetchActiveIncidents,
+  ConnectivityError,
+  fetchActiveIncidents,
 } from '@/features/incidents/incidents.service';
 import {
-    INCIDENT_SEVERITY_LABELS,
-    INCIDENT_STATUS_LABELS,
-    INCIDENT_TYPES,
-    INCIDENT_TYPE_COLORS,
-    INCIDENT_TYPE_LABELS,
-    Incident,
-    IncidentType,
+  INCIDENT_SEVERITY_LABELS,
+  INCIDENT_STATUS_LABELS,
+  INCIDENT_TYPES,
+  INCIDENT_TYPE_COLORS,
+  INCIDENT_TYPE_LABELS,
+  Incident,
+  IncidentType,
 } from '@/features/incidents/types';
 import { getSavedMapRegion, setSavedMapRegion } from '@/features/map/map-view-state';
+import { useRoutesStore } from '@/features/rutas/store/rutasStore';
+import { useAlertsStore } from '@/shared/store/alertsStore';
 
 const PRIMARY = '#5B3FD9';
 const LOCATION_FAB_BOTTOM_OFFSET = 8;
@@ -42,14 +44,30 @@ const DEFAULT_REGION: Region = {
 
 type IncidentFilter = 'todos' | IncidentType;
 
+type SearchParams = {
+  routeId?: string | string[];
+};
+
 export default function MapHomeScreen() {
   const router = useRouter();
+  const params = useLocalSearchParams<SearchParams>();
   const mapRef = useRef<MapView | null>(null);
   const insets = useSafeAreaInsets();
 
   const [incidents, setIncidents] = useState<Incident[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedFilter, setSelectedFilter] = useState<IncidentFilter>('todos');
+  const [selectedSeverities, setSelectedSeverities] = useState<Incident['severity'][]>([
+    'Critico',
+    'Alto',
+    'Medio',
+    'Bajo',
+  ]);
+  const [tempSelectedSeverities, setTempSelectedSeverities] = useState<Incident['severity'][]>(selectedSeverities);
+  const [showFilterModal, setShowFilterModal] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [suggestions, setSuggestions] = useState<Array<any>>([]);
+  const [loadingSuggestions, setLoadingSuggestions] = useState(false);
   const [userCoordinate, setUserCoordinate] = useState<{ latitude: number; longitude: number } | null>(
     null
   );
@@ -60,6 +78,23 @@ export default function MapHomeScreen() {
   const restoredRegion = getSavedMapRegion();
   const hasAppliedInitialFitRef = useRef(Boolean(restoredRegion));
   const handleTouchStartY = useRef<number | null>(null);
+  const syncAlertsFromIncidents = useAlertsStore(
+    (state) => state.syncFromIncidents,
+  );
+  const alerts = useAlertsStore((state) => state.alerts);
+  const selectedAlertId = useAlertsStore((state) => state.selectedAlertId);
+  const consumeSelectedAlert = useAlertsStore(
+    (state) => state.consumeSelectedAlert,
+  );
+  const routeId = firstParam(params.routeId);
+  const routePreview = useRoutesStore((state) =>
+    routeId ? state.routes.find((route) => route.id === routeId) : undefined,
+  );
+
+  const clearRoutePreview = () => {
+    useRoutesStore.setState({ selectedRouteId: null });
+    router.replace('/(tabs)');
+  };
 
   const closeIncidentDetail = () => {
     setSelectedIncident(null);
@@ -140,7 +175,7 @@ export default function MapHomeScreen() {
     }
   };
 
-  const openIncidentDetail = (incident: Incident) => {
+  const openIncidentDetail = useCallback((incident: Incident) => {
     setSheetExpanded(false);
     setSelectedIncident(incident);
 
@@ -153,7 +188,7 @@ export default function MapHomeScreen() {
       },
       450
     );
-  };
+  }, []);
 
   useEffect(() => {
     let locationSubscription: Location.LocationSubscription | null = null;
@@ -171,6 +206,7 @@ export default function MapHomeScreen() {
         }
 
         setIncidents(activeIncidents);
+        syncAlertsFromIncidents(activeIncidents, null);
 
         const locationPermission = await Location.requestForegroundPermissionsAsync();
 
@@ -188,6 +224,11 @@ export default function MapHomeScreen() {
           }
 
           setUserCoordinate({
+            latitude: position.coords.latitude,
+            longitude: position.coords.longitude,
+          });
+
+          syncAlertsFromIncidents(activeIncidents, {
             latitude: position.coords.latitude,
             longitude: position.coords.longitude,
           });
@@ -248,12 +289,15 @@ export default function MapHomeScreen() {
   }, [incidents]);
 
   const filteredIncidents = useMemo(() => {
-    if (selectedFilter === 'todos') {
-      return incidents;
-    }
+    // filter by type
+    let list =
+      selectedFilter === 'todos' ? incidents : incidents.filter((incident) => incident.type === selectedFilter);
 
-    return incidents.filter((incident) => incident.type === selectedFilter);
-  }, [incidents, selectedFilter]);
+    // filter by selected severities
+    list = list.filter((incident) => selectedSeverities.includes(incident.severity));
+
+    return list;
+  }, [incidents, selectedFilter, selectedSeverities]);
 
   const selectedIncidentProgress = useMemo(() => {
     if (!selectedIncident?.endAt) {
@@ -326,15 +370,120 @@ export default function MapHomeScreen() {
     );
   }, [selectedFilter, filteredIncidents]);
 
+  useEffect(() => {
+    if (!mapRef.current || !routePreview || routePreview.coordinates.length === 0) {
+      return;
+    }
+
+    if (routePreview.coordinates.length === 1) {
+      const onlyPoint = routePreview.coordinates[0];
+
+      mapRef.current.animateToRegion(
+        {
+          latitude: onlyPoint.latitude,
+          longitude: onlyPoint.longitude,
+          latitudeDelta: 0.03,
+          longitudeDelta: 0.03,
+        },
+        450,
+      );
+      return;
+    }
+
+    mapRef.current.fitToCoordinates(routePreview.coordinates, {
+      edgePadding: {
+        top: 140,
+        right: 70,
+        bottom: 170,
+        left: 70,
+      },
+      animated: true,
+    });
+  }, [routePreview]);
+
+  useEffect(() => {
+    if (!selectedAlertId) {
+      return;
+    }
+
+    const alertIncident =
+      alerts.find((alert) => alert.id === selectedAlertId)?.incident ??
+      incidents.find((incident) => incident.id === selectedAlertId);
+
+    if (!alertIncident) {
+      return;
+    }
+
+    openIncidentDetail(alertIncident);
+    consumeSelectedAlert();
+  }, [consumeSelectedAlert, incidents, openIncidentDetail, selectedAlertId]);
+
+  // Search suggestions (Nominatim) with debounce
+  useEffect(() => {
+    if (!searchQuery || searchQuery.trim().length === 0) {
+      setSuggestions([]);
+      setLoadingSuggestions(false);
+      return;
+    }
+
+    let cancelled = false;
+    const controller = new AbortController();
+
+    const timer = setTimeout(async () => {
+      try {
+        setLoadingSuggestions(true);
+        const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(
+          searchQuery
+        )}&addressdetails=1&limit=6`;
+
+        const res = await fetch(url, {
+          signal: controller.signal,
+          headers: {
+            'Accept-Language': 'es',
+            'User-Agent': 'Revibo/1.0',
+          },
+        });
+
+        if (cancelled) return;
+
+        if (!res.ok) {
+          setSuggestions([]);
+          setLoadingSuggestions(false);
+          return;
+        }
+
+        const data = await res.json();
+        setSuggestions(Array.isArray(data) ? data : []);
+      } catch (e) {
+        if ((e as any)?.name === 'AbortError') return;
+        setSuggestions([]);
+      } finally {
+        if (!cancelled) setLoadingSuggestions(false);
+      }
+    }, 350);
+
+    return () => {
+      cancelled = true;
+      controller.abort();
+      clearTimeout(timer);
+    };
+  }, [searchQuery]);
+
   return (
     <View style={styles.container}>
       <View style={[styles.topPanel, { paddingTop: insets.top + 12 }]}>
-        <TextInput
-          editable={false}
-          placeholder="Buscar direccion o destino..."
-          placeholderTextColor="#D6D0FF"
-          style={styles.searchInput}
-        />
+        <View style={styles.searchRow}>
+          <TextInput
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            placeholder="Buscar calle, avenida o carretera"
+            placeholderTextColor="#D6D0FF"
+            style={styles.searchInput}
+          />
+          <Pressable onPress={() => setShowFilterModal(true)} style={styles.filterButton}>
+            <MaterialIcons name="filter-list" size={22} color="#FFFFFF" />
+          </Pressable>
+        </View>
 
         <ScrollView
           horizontal
@@ -356,7 +505,71 @@ export default function MapHomeScreen() {
             />
           ))}
         </ScrollView>
+        {searchQuery.length > 0 ? (
+          <View style={styles.suggestionsBoxInline}>
+            {loadingSuggestions ? (
+              <View style={styles.suggestionRow}><ActivityIndicator size="small" color="#6F61DD" /></View>
+            ) : (
+              suggestions.map((s) => (
+                <Pressable
+                  key={s.place_id ?? s.osm_id ?? s.lat + s.lon}
+                  onPress={() => {
+                    const lat = parseFloat(s.lat);
+                    const lon = parseFloat(s.lon);
+                    mapRef.current?.animateToRegion({ latitude: lat, longitude: lon, latitudeDelta: 0.01, longitudeDelta: 0.01 }, 450);
+                    setSuggestions([]);
+                    setSearchQuery('');
+                  }}
+                  style={styles.suggestionRow}>
+                  <Text style={styles.suggestionText}>{s.display_name}</Text>
+                </Pressable>
+              ))
+            )}
+          </View>
+        ) : null}
       </View>
+
+
+      {showFilterModal ? (
+        <View style={styles.filterModalOverlay}>
+          <View style={styles.filterModal}>
+            <View style={styles.filterHeader}>
+              <Text style={styles.filterTitle}>Filtrar incidentes</Text>
+              <Pressable onPress={() => { setTempSelectedSeverities(['Critico','Alto','Medio','Bajo']); }}>
+                <Text style={styles.clearText}>Limpiar</Text>
+              </Pressable>
+            </View>
+
+            <Text style={styles.filterSectionTitle}>GRAVEDAD</Text>
+            <View style={styles.filterSeverityRow}>
+              {(['Critico','Alto','Medio','Bajo'] as Incident['severity'][]).map((sev) => (
+                <Pressable
+                  key={sev}
+                  onPress={() => {
+                    setTempSelectedSeverities((prev) =>
+                      prev.includes(sev) ? prev.filter((p) => p !== sev) : [...prev, sev]
+                    );
+                  }}
+                  style={[
+                    styles.severitySelectChip,
+                    tempSelectedSeverities.includes(sev) ? styles.severitySelectChipActive : undefined,
+                  ]}>
+                  <Text style={styles.severitySelectText}>{INCIDENT_SEVERITY_LABELS[sev]}</Text>
+                </Pressable>
+              ))}
+            </View>
+
+            <Pressable
+              style={styles.applyFiltersButton}
+              onPress={() => {
+                setSelectedSeverities(tempSelectedSeverities);
+                setShowFilterModal(false);
+              }}>
+              <Text style={styles.applyFiltersText}>Aplicar filtros</Text>
+            </Pressable>
+          </View>
+        </View>
+      ) : null}
 
       <MapView
         ref={mapRef}
@@ -370,6 +583,32 @@ export default function MapHomeScreen() {
         rotateEnabled
         pitchEnabled
         onRegionChangeComplete={(region) => setSavedMapRegion(region)}>
+        {routePreview?.coordinates.length ? (
+          <>
+            {routePreview.coordinates.length > 1 ? (
+              <Polyline
+                coordinates={routePreview.coordinates}
+                strokeColor={PRIMARY}
+                strokeWidth={5}
+              />
+            ) : null}
+
+            <Marker
+              coordinate={routePreview.coordinates[0]}
+              pinColor={PRIMARY}
+              title={routePreview.name}
+            />
+
+            {routePreview.coordinates.length > 1 ? (
+              <Marker
+                coordinate={routePreview.coordinates[routePreview.coordinates.length - 1]}
+                pinColor={PRIMARY}
+                title={`${routePreview.name} · destino`}
+              />
+            ) : null}
+          </>
+        ) : null}
+
         {filteredIncidents.map((incident) => {
           if (incident.geometryType === 'Point') {
             return (
@@ -406,6 +645,25 @@ export default function MapHomeScreen() {
           );
         })}
       </MapView>
+
+      {routePreview ? (
+        <View style={[styles.routePreviewBanner, { top: insets.top + 112 }]}>
+          <View style={styles.routePreviewBadge}>
+            <MaterialIcons name="alt-route" size={14} color="#FFFFFF" />
+          </View>
+          <View style={styles.routePreviewTextBlock}>
+            <Text style={styles.routePreviewTitle}>{routePreview.name}</Text>
+            <Text style={styles.routePreviewSubtitle}>{Math.round(routePreview.distanceKm)} km</Text>
+          </View>
+          <Pressable
+            onPress={clearRoutePreview}
+            style={styles.routePreviewCloseButton}
+            accessibilityRole="button"
+            accessibilityLabel="Cerrar navegación de ruta">
+            <MaterialIcons name="close" size={18} color="#FFFFFF" />
+          </Pressable>
+        </View>
+      ) : null}
 
       <Pressable
         onPress={centerToUserLocation}
@@ -525,7 +783,7 @@ export default function MapHomeScreen() {
                     },
                   })
                 }>
-                <Text style={styles.routeButtonText}>Ver ruta alternativa</Text>
+                <Text style={styles.routeButtonText}>Ver ruta</Text>
                 <MaterialIcons name="arrow-forward" size={18} color="#FFFFFF" />
               </Pressable>
             ) : (
@@ -582,6 +840,14 @@ function buildProgress(startAt: string, endAt: string) {
         ? `Tiempo estimado: ${remainingMinutes} min restantes`
         : 'Tiempo estimado: finalizado',
   };
+}
+
+function firstParam(value: string | string[] | undefined): string | undefined {
+  if (Array.isArray(value)) {
+    return value[0];
+  }
+
+  return value;
 }
 
 function StatusChip({ text }: { text: string }) {
@@ -653,6 +919,8 @@ const styles = StyleSheet.create({
     height: 40,
     borderRadius: 12,
     paddingHorizontal: 14,
+    paddingRight: 56,
+    flex: 1,
     backgroundColor: 'rgba(255,255,255,0.14)',
     color: '#FFFFFF',
     fontSize: 14,
@@ -690,6 +958,134 @@ const styles = StyleSheet.create({
   },
   filterChipLabelInactive: {
     color: '#F4F0FF',
+  },
+  searchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    position: 'relative',
+  },
+  filterButton: {
+    width: 42,
+    height: 40,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    position: 'absolute',
+    right: 6,
+    top: 0,
+  },
+  suggestionsBox: {
+    position: 'absolute',
+    left: 14,
+    right: 14,
+    borderRadius: 12,
+    backgroundColor: '#FFFFFF',
+    zIndex: 30,
+    paddingVertical: 6,
+    shadowColor: '#000',
+    shadowOpacity: 0.08,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 6,
+  },
+  suggestionsBoxInline: {
+    marginTop: 8,
+    borderRadius: 12,
+    backgroundColor: '#FFFFFF',
+    zIndex: 30,
+    paddingVertical: 6,
+    shadowColor: '#000',
+    shadowOpacity: 0.08,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 6,
+  },
+  suggestionRow: {
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F0EEF8',
+  },
+  suggestionText: {
+    color: '#2F2B3A',
+  },
+  filterModalOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 40,
+  },
+  filterModal: {
+    width: '92%',
+    borderRadius: 14,
+    backgroundColor: '#FFFFFF',
+    padding: 18,
+    shadowColor: '#000',
+    shadowOpacity: 0.12,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 8,
+  },
+  filterHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  filterTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#2F2B3A',
+  },
+  clearText: {
+    color: '#6F61DD',
+    fontWeight: '700',
+  },
+  filterSectionTitle: {
+    color: '#4C4958',
+    fontWeight: '700',
+    marginTop: 8,
+    marginBottom: 8,
+  },
+  filterSeverityRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 12,
+  },
+  severitySelectChip: {
+    backgroundColor: '#F4F0FF',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 12,
+  },
+  severitySelectChipActive: {
+    backgroundColor: 'rgba(91,63,217,0.12)',
+    borderWidth: 1,
+    borderColor: '#6F61DD',
+  },
+  severitySelectText: {
+    color: '#2F2B3A',
+    fontWeight: '700',
+  },
+  applyFiltersButton: {
+    marginTop: 6,
+    backgroundColor: 'transparent',
+    borderWidth: 1,
+    borderColor: '#6F61DD',
+    paddingVertical: 12,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  applyFiltersText: {
+    color: '#6F61DD',
+    fontWeight: '800',
   },
   map: {
     flex: 1,
@@ -743,6 +1139,58 @@ const styles = StyleSheet.create({
   infoText: {
     color: '#FFFFFF',
     fontSize: 13,
+  },
+  routePreviewBanner: {
+    position: 'absolute',
+    left: 14,
+    right: 14,
+    borderRadius: 16,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    backgroundColor: 'rgba(91, 63, 217, 0.94)',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    shadowColor: '#2E1E82',
+    shadowOpacity: 0.22,
+    shadowRadius: 10,
+    shadowOffset: {
+      width: 0,
+      height: 4,
+    },
+    elevation: 4,
+  },
+  routePreviewBadge: {
+    width: 30,
+    height: 30,
+    borderRadius: 10,
+    backgroundColor: 'rgba(255,255,255,0.18)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  routePreviewTextBlock: {
+    flex: 1,
+  },
+  routePreviewTitle: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  routePreviewSubtitle: {
+    color: '#E8E3FF',
+    fontSize: 12,
+    fontWeight: '600',
+    marginTop: 2,
+  },
+  routePreviewCloseButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 10,
+    backgroundColor: 'rgba(255,255,255,0.16)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.18)',
   },
   detailSheet: {
     position: 'absolute',
