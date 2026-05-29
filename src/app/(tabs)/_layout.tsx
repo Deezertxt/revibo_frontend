@@ -3,7 +3,7 @@ import { useAlertsStore } from "@/shared/store/alertsStore";
 import { useAuthStore } from "@/shared/store/useAuthStore";
 import FontAwesome from "@expo/vector-icons/FontAwesome";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
-import { Tabs } from "expo-router";
+import { Tabs, usePathname } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 const ACTIVE = "#5B3FD9";
@@ -14,6 +14,7 @@ export default function TabLayout() {
   const unreadAlertCount = useAlertsStore(
     (state) => state.alerts.filter((alert) => alert.unread).length,
   );
+  const pathname = usePathname();
   const rol = useAuthStore((state) => state.user?.rol);
 
   return (
@@ -71,7 +72,9 @@ export default function TabLayout() {
             <FontAwesome name="pencil" size={24} color={color} />
           ),
           href:
-            rol === "admin" || rol === "autoridad" || rol === "moderador"
+            rol === "admin" ||
+            rol === "autoridad" ||
+            rol === "moderador"
               ? "/(tabs)/crear_reportes"
               : (null as any),
         }}
