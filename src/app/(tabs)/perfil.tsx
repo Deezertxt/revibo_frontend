@@ -1,6 +1,6 @@
 import { ThemedText } from "@/shared/components/themed-text";
 import { ThemedView } from "@/shared/components/themed-view";
-import { getAuthSession, logout } from "@/shared/store/authStore";
+import { useAuthStore } from "@/shared/store/useAuthStore";
 import { useRouter } from "expo-router";
 import { useState } from "react";
 import {
@@ -14,15 +14,16 @@ import { logoutUser } from "@/features/auth/services/auth.service";
 
 export default function PerfilScreen() {
   const router = useRouter();
-  const session = getAuthSession();
+  const { isRegistered, accessToken, user } = useAuthStore();
+  const logout = useAuthStore((state) => state.logout);
   const [cargando, setCargando] = useState(false);
 
   const handleLogout = async () => {
     setCargando(true);
     try {
       // token actual
-      if (session.accessToken) {
-        await logoutUser(session.accessToken);
+      if (accessToken) {
+        await logoutUser(accessToken);
       }
     } catch (error: any) {
       console.log("Error al cerrar sesión en el servidor:", error.message);
@@ -36,7 +37,7 @@ export default function PerfilScreen() {
   };
 
   // Usuario deslogueado y sin sesión
-  if (!session.isRegistered) {
+  if (!isRegistered) {
     return (
       <ThemedView style={styles.container}>
         <View style={styles.header}>
@@ -64,18 +65,18 @@ export default function PerfilScreen() {
       <View style={styles.header}>
         <ThemedText type="title">Mi Perfil</ThemedText>
         <ThemedText style={styles.roleTag}>
-          {session.rol?.toUpperCase()}
+          {user?.rol?.toUpperCase()}
         </ThemedText>
       </View>
 
       <ThemedView style={styles.infoCard}>
         <ThemedText type="defaultSemiBold">Nombre</ThemedText>
-        <ThemedText>{session.name ?? "Sin nombre"}</ThemedText>
+        <ThemedText>{user?.nombre ?? "Sin nombre"}</ThemedText>
 
         <View style={{ height: 15 }} />
 
         <ThemedText type="defaultSemiBold">Correo Electrónico</ThemedText>
-        <ThemedText>{session.email ?? "Sin correo"}</ThemedText>
+        <ThemedText>{user?.correo ?? "Sin correo"}</ThemedText>
       </ThemedView>
 
       <TouchableOpacity

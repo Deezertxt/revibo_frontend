@@ -13,13 +13,14 @@ import {
 } from "react-native";
 
 // Importamos el servicio y los stores
-import { getAccessToken } from "../../../shared/store/authStore";
+import { useAuthStore } from "../../../shared/store/useAuthStore";
 import { uploadImageToCloudinary } from "../services/cloudinaryService";
 import { crearReporte } from "../services/reporteService";
 import { useCrearReporteStore } from "../store/crearReporteStore";
 
 export default function PasoImagenes() {
   const store = useCrearReporteStore();
+  const accessToken = useAuthStore((state) => state.accessToken);
   const [loading, setLoading] = useState(false);
 
   const [imagenesLocales, setImagenesLocales] = useState<string[]>([]);
@@ -61,7 +62,7 @@ export default function PasoImagenes() {
   };
 
   const publicar = async () => {
-    const token = getAccessToken();
+    const token = accessToken;
 
     if (!token) {
       Alert.alert(
