@@ -1,17 +1,24 @@
 import { create } from 'zustand';
 
 import {
-    buildRoutePreview,
-    type RouteDraft,
+  createRouteOnBackend,
+  loadRoutesFromBackend,
+} from '@/features/rutas/services/rutas.api.service';
+import {
+  buildRoutePreview,
 } from '@/features/rutas/services/rutas.service';
 import {
-    buildRouteSummary,
-    type SavedRoute,
+  buildRouteSummary,
+  type RouteDraft,
+  type SavedRoute,
 } from '@/features/rutas/types';
+import { getAccessToken } from '@/shared/store/authStore';
 
 type RoutesState = {
   routes: SavedRoute[];
   selectedRouteId: string | null;
+  isLoading: boolean;
+  loadRoutes: () => Promise<void>;
   setSelectedRouteId: (routeId: string | null) => void;
   createRoute: (draft: RouteDraft) => Promise<SavedRoute>;
   updateRoute: (routeId: string, draft: RouteDraft) => Promise<SavedRoute | null>;
@@ -58,26 +65,38 @@ const seedRoutes: SavedRoute[] = [
 export const useRoutesStore = create<RoutesState>((set, get) => ({
   routes: seedRoutes,
   selectedRouteId: null,
+  isLoading: false,
+  loadRoutes: async () => {
+    const token = getAccessToken();
+
+    if (!token) {
+      return;
+    }
+
+    set({ isLoading: true });
+
+    try {
+      const backendRoutes = await loadRoutesFromBackend(token, get().routes);
+
+      set({ routes: backendRoutes });
+    } finally {
+      set({ isLoading: false });
+    }
+  },
   setSelectedRouteId: (routeId) => set({ selectedRouteId: routeId }),
   createRoute: async (draft) => {
     const preview = await buildRoutePreview(draft);
-    const currentDate = new Date().toISOString();
-    const routeId = `route-${Date.now()}`;
-    const storedRoute: SavedRoute = {
-      id: routeId,
-      name: draft.name.trim(),
-      stops: draft.stops.map((stop) => stop.trim()).filter((stop) => stop.length > 0),
-      summary: buildRouteSummary(draft.stops),
-      routeType: draft.routeType,
-      distanceKm: preview.distanceKm,
-      coordinates: preview.coordinates,
-      createdAt: currentDate,
-      updatedAt: currentDate,
-    };
+    const token = getAccessToken();
+
+    if (!token) {
+      throw new Error('Necesitas iniciar sesión para guardar una ruta.');
+    }
+
+    const storedRoute = await createRouteOnBackend(token, draft, preview);
 
     set((state) => ({
       routes: [storedRoute, ...state.routes],
-      selectedRouteId: routeId,
+      selectedRouteId: storedRoute.id,
     }));
 
     return storedRoute;
@@ -96,7 +115,9 @@ export const useRoutesStore = create<RoutesState>((set, get) => ({
         updatedRoute = {
           ...route,
           name: draft.name.trim(),
-          stops: draft.stops.map((stop) => stop.trim()).filter((stop) => stop.length > 0),
+          stops: draft.stops
+            .map((stop: string) => stop.trim())
+            .filter((stop: string) => stop.length > 0),
           summary: buildRouteSummary(draft.stops),
           routeType: draft.routeType,
           distanceKm: preview.distanceKm,

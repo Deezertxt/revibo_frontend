@@ -4,29 +4,29 @@ import * as Location from 'expo-location';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-    ActivityIndicator,
-    Pressable,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    View,
+  ActivityIndicator,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
 } from 'react-native';
 import MapView, { Marker, Polyline, Region } from 'react-native-maps';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import {
-    ConnectivityError,
-    fetchActiveIncidents,
+  ConnectivityError,
+  fetchActiveIncidents,
 } from '@/features/incidents/incidents.service';
 import {
-    INCIDENT_SEVERITY_LABELS,
-    INCIDENT_STATUS_LABELS,
-    INCIDENT_TYPES,
-    INCIDENT_TYPE_COLORS,
-    INCIDENT_TYPE_LABELS,
-    Incident,
-    IncidentType,
+  INCIDENT_SEVERITY_LABELS,
+  INCIDENT_STATUS_LABELS,
+  INCIDENT_TYPES,
+  INCIDENT_TYPE_COLORS,
+  INCIDENT_TYPE_LABELS,
+  Incident,
+  IncidentType,
 } from '@/features/incidents/types';
 import { getSavedMapRegion, setSavedMapRegion } from '@/features/map/map-view-state';
 import { useRoutesStore } from '@/features/rutas/store/rutasStore';
@@ -91,6 +91,11 @@ export default function MapHomeScreen() {
   const routePreview = useRoutesStore((state) =>
     routeId ? state.routes.find((route) => route.id === routeId) : undefined,
   );
+
+  const clearRoutePreview = () => {
+    useRoutesStore.setState({ selectedRouteId: null });
+    router.replace('/(tabs)');
+  };
 
   const closeIncidentDetail = () => {
     setSelectedIncident(null);
@@ -654,6 +659,13 @@ export default function MapHomeScreen() {
               {ROUTE_TYPE_LABELS[routePreview.routeType]} · {Math.round(routePreview.distanceKm)} km
             </Text>
           </View>
+          <Pressable
+            onPress={clearRoutePreview}
+            style={styles.routePreviewCloseButton}
+            accessibilityRole="button"
+            accessibilityLabel="Cerrar navegación de ruta">
+            <MaterialIcons name="close" size={18} color="#FFFFFF" />
+          </Pressable>
         </View>
       ) : null}
 
@@ -1173,6 +1185,16 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
     marginTop: 2,
+  },
+  routePreviewCloseButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 10,
+    backgroundColor: 'rgba(255,255,255,0.16)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.18)',
   },
   detailSheet: {
     position: 'absolute',

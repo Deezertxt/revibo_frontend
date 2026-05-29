@@ -11,7 +11,7 @@ import {
   StyleSheet,
   Text,
   TextInput,
-  View,
+  View
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -48,9 +48,15 @@ export default function RutasScreen() {
   const params = useLocalSearchParams<SearchParams>();
 
   const routes = useRoutesStore((state) => state.routes);
+  const isLoading = useRoutesStore((state) => state.isLoading);
+  const loadRoutes = useRoutesStore((state) => state.loadRoutes);
   const createRoute = useRoutesStore((state) => state.createRoute);
   const updateRoute = useRoutesStore((state) => state.updateRoute);
   const deleteRoute = useRoutesStore((state) => state.deleteRoute);
+
+  useEffect(() => {
+    void loadRoutes().catch(() => undefined);
+  }, [loadRoutes]);
 
   const routeId = firstParam(params.routeId);
   const mode = firstParam(params.mode);
@@ -104,6 +110,10 @@ export default function RutasScreen() {
       ],
     );
   };
+
+  if (isLoading) {
+    return <LoadingScreen topInset={insets.top} />;
+  }
 
   if (screenMode === 'create' || screenMode === 'edit') {
     return (
@@ -272,6 +282,7 @@ function RouteFormScreen({
       <ScrollView
         contentContainerStyle={[styles.formScroll, { paddingBottom: insets.bottom + 104 }]}
         showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
       >
         <View style={[styles.formHeader, { paddingTop: insets.top + 10 }]}> 
           <View style={styles.formHeaderTopRow}>
@@ -292,8 +303,7 @@ function RouteFormScreen({
             </Pressable>
           </View>
         </View>
-
-        <View style={styles.formCard}>
+<View style={styles.formCard}>
           <FieldLabel text="Nombre de la ruta" />
           <TextInput
             value={name}
@@ -307,7 +317,7 @@ function RouteFormScreen({
           <View style={styles.stopsGroup}>
             {stops.map((stop, index) => (
               <RouteStopRow
-                key={`${index}-${stop}`}
+                key={`stop-${index}`}
                 index={index}
                 value={stop}
                 isFirst={index === 0}
@@ -325,41 +335,28 @@ function RouteFormScreen({
             <MaterialIcons name="add" size={18} color="#5B3FD9" />
             <Text style={styles.addStopButtonText}>Agregar parada</Text>
           </Pressable>
+
+          {errorMessage ? <Text style={styles.errorText}>{errorMessage}</Text> : null}
+
+          <Pressable
+            onPress={handleSave}
+            disabled={!canSave || saving}
+            style={({ pressed }) => [
+              styles.simpleSaveButton,
+              !canSave && styles.simpleSaveButtonDisabled,
+              pressed && !(!canSave || saving) && styles.simpleSaveButtonPressed,
+            ]}
+          >
+            {saving ? (
+              <ActivityIndicator color="#FFFFFF" />
+            ) : (
+              <Text style={styles.simpleSaveButtonText}>
+                Guardar Ruta
+              </Text>
+            )}
+          </Pressable>
         </View>
 
-        <View style={styles.formCard}>
-          <FieldLabel text="Tipo de ruta" />
-          <View style={styles.routeTypeGrid}>
-            {(Object.keys(ROUTE_TYPE_LABELS) as RouteType[]).map((type) => (
-              <RouteTypeChip
-                key={type}
-                label={ROUTE_TYPE_LABELS[type]}
-                active={routeType === type}
-                color={ROUTE_TYPE_COLORS[type]}
-                onPress={() => setRouteType(type)}
-              />
-            ))}
-          </View>
-        </View>
-
-        {errorMessage ? <Text style={styles.errorText}>{errorMessage}</Text> : null}
-
-        <Pressable
-          onPress={handleSave}
-          disabled={!canSave || saving}
-          style={({ pressed }) => [
-            styles.saveButton,
-            !canSave && styles.saveButtonDisabled,
-            saving && styles.saveButtonSaving,
-            pressed && canSave && !saving && styles.saveButtonPressed,
-          ]}
-        >
-          {saving ? (
-            <ActivityIndicator color="#5B3FD9" />
-          ) : (
-            <Text style={styles.saveButtonText}>{isEditMode ? 'Guardar cambios' : 'Guardar ruta'}</Text>
-          )}
-        </Pressable>
       </ScrollView>
     </KeyboardAvoidingView>
   );
@@ -465,6 +462,15 @@ function ActionButton({
   );
 }
 
+function LoadingScreen({ topInset }: { topInset: number }) {
+  return (
+    <View style={[styles.loadingScreen, { paddingTop: topInset }]}>
+      <ActivityIndicator size="large" color={PRIMARY} />
+      <Text style={styles.loadingText}>Cargando rutas guardadas...</Text>
+    </View>
+  );
+}
+
 function RouteStopRow({
   index,
   value,
@@ -504,6 +510,8 @@ function RouteStopRow({
         placeholder={placeholder}
         placeholderTextColor="#8F8F8F"
         style={styles.darkInput}
+        blurOnSubmit={false}
+        returnKeyType="next"
       />
 
       {onRemove ? (
@@ -1011,27 +1019,24 @@ const styles = StyleSheet.create({
   },
   saveButton: {
     marginTop: 14,
-    alignSelf: 'center',
-    width: '92%',
-    minHeight: 52,
+    marginHorizontal: 12,
+    minHeight: 64,
     borderRadius: 16,
-    backgroundColor: '#F7F4FF',
+    backgroundColor: PRIMARY,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: '#CFC5F8',
+    borderWidth: 0,
     shadowColor: '#5B3FD9',
-    shadowOpacity: 0.14,
-    shadowRadius: 8,
+    shadowOpacity: 0.22,
+    shadowRadius: 12,
     shadowOffset: {
       width: 0,
       height: 3,
     },
-    elevation: 2,
+    elevation: 4,
   },
   saveButtonDisabled: {
-    backgroundColor: '#F1ECFF',
-    borderColor: '#DCCFFB',
+    backgroundColor: '#AA9CE9',
     opacity: 1,
   },
   saveButtonSaving: {
@@ -1040,11 +1045,71 @@ const styles = StyleSheet.create({
   saveButtonPressed: {
     opacity: 0.92,
   },
-  saveButtonText: {
+  simpleSaveButton: {
+    marginTop: 10,
+    marginHorizontal: 20,
+    marginBottom: 30,
+    height: 55,
+    borderRadius: 14,
+    backgroundColor: PRIMARY,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 0,
+  },
+  simpleSaveButtonDisabled: {
+    backgroundColor: '#AA9CE9',
+    opacity: 1,
+  },
+  simpleSaveButtonPressed: {
+    opacity: 0.9,
+  },
+  simpleSaveButtonText: {
     color: '#5B3FD9',
     fontSize: 16,
-    fontWeight: '800',
-    textAlign: 'center',
+    fontWeight: '700',
+    letterSpacing: 0.2,
+  },
+  saveButtonContent: {
+    width: '100%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+    paddingHorizontal: 16,
+  },
+  saveButtonIconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.16)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  saveButtonCopy: {
+    flex: 1,
+    gap: 2,
+  },
+  saveButtonTitle: {
+    color: '#5B3FD9',
+    fontSize: 16,
+    fontWeight: '900',
+  },
+  saveButtonSubtitle: {
+    color: '#ECE8FF',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  loadingScreen: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
+    backgroundColor: BACKGROUND,
+  },
+  loadingText: {
+    color: TEXT_MUTED,
+    fontSize: 14,
+    fontWeight: '600',
   },
 });
 
