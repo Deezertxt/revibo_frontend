@@ -1,19 +1,19 @@
 import { create } from 'zustand';
 
 import {
-  createRouteOnBackend,
-  deleteRouteOnBackend,
-  loadRoutesFromBackend,
-  updateRouteOnBackend,
+    createRouteOnBackend,
+    deleteRouteOnBackend,
+    loadRoutesFromBackend,
+    updateRouteOnBackend,
 } from '@/features/rutas/services/rutas.api.service';
 import {
-  buildRoutePreview,
+    buildRoutePreview,
 } from '@/features/rutas/services/rutas.service';
 import {
-  type RouteDraft,
-  type SavedRoute,
+    type RouteDraft,
+    type SavedRoute,
 } from '@/features/rutas/types';
-import { getAccessToken } from '@/shared/store/authStore';
+import { useAuthStore } from '@/shared/store/useAuthStore';
 
 type RoutesState = {
   routes: SavedRoute[];
@@ -33,7 +33,7 @@ export const useRoutesStore = create<RoutesState>((set, get) => ({
   selectedRouteId: null,
   isLoading: false,
   loadRoutes: async () => {
-    const token = getAccessToken();
+    const token = useAuthStore.getState().accessToken;
 
     if (!token) {
       return;
@@ -58,7 +58,7 @@ export const useRoutesStore = create<RoutesState>((set, get) => ({
     }),
   createRoute: async (draft) => {
     const preview = await buildRoutePreview(draft);
-    const token = getAccessToken();
+    const token = useAuthStore.getState().accessToken;
 
     if (!token) {
       throw new Error('Necesitas iniciar sesión para guardar una ruta.');
@@ -74,7 +74,7 @@ export const useRoutesStore = create<RoutesState>((set, get) => ({
     return storedRoute;
   },
   updateRoute: async (routeId, draft) => {
-    const token = getAccessToken();
+    const token = useAuthStore.getState().accessToken;
 
     if (!token) {
       throw new Error('Necesitas iniciar sesión para actualizar una ruta.');
@@ -96,7 +96,7 @@ export const useRoutesStore = create<RoutesState>((set, get) => ({
     return updatedRoute;
   },
   deleteRoute: async (routeId) => {
-    const token = getAccessToken();
+    const token = useAuthStore.getState().accessToken;
 
     if (!token) {
       throw new Error('Necesitas iniciar sesión para eliminar una ruta.');

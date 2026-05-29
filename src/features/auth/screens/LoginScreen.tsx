@@ -2,26 +2,27 @@ import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import React, { useState } from "react";
 import {
-    ActivityIndicator,
-    Alert,
-    KeyboardAvoidingView,
-    Platform,
-    Pressable,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  Alert,
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { setRegistered } from "../../../shared/store/authStore";
+import { useAuthStore } from "@/shared/store/useAuthStore";
 import { loginUser } from "../services/auth.service";
 
 export default function LoginFormulario() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const setSession = useAuthStore((state) => state.setSession);
 
   const [email, setEmail] = useState<string>("");
   const [password, setPassword] = useState<string>("");
@@ -41,13 +42,7 @@ export default function LoginFormulario() {
         contrasena: password,
       });
 
-      setRegistered({
-        accessToken: resultado.accessToken,
-        idUsuario: resultado.user.id_usuario,
-        name: resultado.user.nombre,
-        email: resultado.user.correo,
-        rol: resultado.user.rol || "usuario",
-      });
+      setSession(resultado.user, resultado.accessToken);
 
       const rolUser = resultado.user.rol || "usuario";
       const rolFormateado = rolUser.charAt(0).toUpperCase() + rolUser.slice(1);

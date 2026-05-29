@@ -1,16 +1,16 @@
 import { registerUser } from "@/features/auth/services/auth.service";
-import { setRegistered } from "@/shared/store/authStore";
+import { useAuthStore } from "@/shared/store/useAuthStore";
 import { useRouter } from "expo-router";
 import React, { useState } from "react";
 import { Controller, useForm } from "react-hook-form";
 import {
-    ActivityIndicator,
-    Alert,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  Alert,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-aware-scroll-view";
 
@@ -29,6 +29,7 @@ export default function RegisterUserScreen() {
   const [showConfirm, setShowConfirm] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const router = useRouter();
+  const setSession = useAuthStore((state) => state.setSession);
 
   const { control, handleSubmit, watch } = useForm<FormData>({
     defaultValues: {
@@ -54,12 +55,7 @@ export default function RegisterUserScreen() {
         confirmacion_contrasena: data.confirmPassword,
       });
 
-      setRegistered({
-        accessToken: result.accessToken,
-        idUsuario: result.user.id_usuario,
-        name: result.user.nombre,
-        email: result.user.correo,
-      });
+      setSession(result.user, result.accessToken);
 
       Alert.alert("¡Éxito!", "Cuenta creada correctamente en el backend", [
         { text: "OK", onPress: () => router.replace("/(tabs)/perfil") },

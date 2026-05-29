@@ -22,7 +22,7 @@ import {
   type RouteDraft,
   type SavedRoute,
 } from '@/features/rutas/types';
-import { getAuthSession } from '@/shared/store/authStore';
+import { useAuthStore } from '@/shared/store/useAuthStore';
 
 type ScreenMode = 'list' | 'create' | 'edit';
 
@@ -44,7 +44,8 @@ export default function RutasScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<SearchParams>();
-  const session = getAuthSession();
+  const accessToken = useAuthStore((state) => state.accessToken);
+  const userId = useAuthStore((state) => state.user?.id_usuario);
 
   const routes = useRoutesStore((state) => state.routes);
   const isLoading = useRoutesStore((state) => state.isLoading);
@@ -54,8 +55,12 @@ export default function RutasScreen() {
   const deleteRoute = useRoutesStore((state) => state.deleteRoute);
 
   useEffect(() => {
+    if (!accessToken || !userId) {
+      return;
+    }
+
     void loadRoutes().catch(() => undefined);
-  }, [loadRoutes]);
+  }, [accessToken, loadRoutes, userId]);
 
   const routeId = firstParam(params.routeId);
   const mode = firstParam(params.mode);
@@ -75,7 +80,7 @@ export default function RutasScreen() {
         ? 'edit'
         : 'list';
 
-  const canCreateRoutes = Boolean(session.isRegistered && session.accessToken);
+  const canCreateRoutes = Boolean(accessToken && userId);
 
   useEffect(() => {
     if (screenMode === 'create' && !canCreateRoutes) {

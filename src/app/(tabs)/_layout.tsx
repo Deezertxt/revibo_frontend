@@ -1,10 +1,9 @@
 import { HapticTab } from "@/shared/components/haptic-tab";
 import { useAlertsStore } from "@/shared/store/alertsStore";
-import { getAuthSession } from "@/shared/store/authStore";
+import { useAuthStore } from "@/shared/store/useAuthStore";
 import FontAwesome from "@expo/vector-icons/FontAwesome";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
-import { Tabs, usePathname } from "expo-router";
-import { useEffect, useState } from "react";
+import { Tabs } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 const ACTIVE = "#5B3FD9";
@@ -12,19 +11,10 @@ const INACTIVE = "#B7B4C4";
 
 export default function TabLayout() {
   const insets = useSafeAreaInsets();
-  const pathname = usePathname();
   const unreadAlertCount = useAlertsStore(
     (state) => state.alerts.filter((alert) => alert.unread).length,
   );
-
-  const [rolActual, setRolActual] = useState<string | null | undefined>(
-    undefined,
-  );
-
-  useEffect(() => {
-    const session = getAuthSession();
-    setRolActual(session.rol);
-  }, [pathname]);
+  const rol = useAuthStore((state) => state.user?.rol);
 
   return (
     <Tabs
@@ -72,7 +62,7 @@ export default function TabLayout() {
           },
         }}
       />
-      {/* CREAR REPORTES */}
+
       <Tabs.Screen
         name="crear_reportes"
         options={{
@@ -80,11 +70,8 @@ export default function TabLayout() {
           tabBarIcon: ({ color }) => (
             <FontAwesome name="pencil" size={24} color={color} />
           ),
-
           href:
-            rolActual === "admin" ||
-            rolActual === "autoridad" ||
-            rolActual === "moderador"
+            rol === "admin" || rol === "autoridad" || rol === "moderador"
               ? "/(tabs)/crear_reportes"
               : (null as any),
         }}
@@ -100,7 +87,6 @@ export default function TabLayout() {
         }}
       />
 
-      {/* 5. ADMIN */}
       <Tabs.Screen
         name="admin"
         options={{
@@ -112,7 +98,7 @@ export default function TabLayout() {
               color={color}
             />
           ),
-          href: rolActual === "admin" ? "/(tabs)/admin" : null,
+          href: rol === "admin" ? "/(tabs)/admin" : null,
         }}
       />
 

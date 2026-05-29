@@ -1,6 +1,6 @@
 import { buildRoutePreview } from '@/features/rutas/services/rutas.service';
 import { buildRouteSummary, type RouteCoordinate, type RouteDraft, type SavedRoute } from '@/features/rutas/types';
-import { getAuthSession } from '@/shared/store/authStore';
+import { useAuthStore } from '@/shared/store/useAuthStore';
 
 const BASE_URL = process.env.EXPO_PUBLIC_API_URL
   ? `${process.env.EXPO_PUBLIC_API_URL.trim()}/api/v1`
@@ -79,8 +79,7 @@ export async function loadRoutesFromBackend(
   token: string,
   currentRoutes: SavedRoute[] = [],
 ): Promise<SavedRoute[]> {
-  const session = getAuthSession();
-  const userId = session.idUsuario;
+  const userId = useAuthStore.getState().user?.id_usuario;
 
   if (!userId) {
     return currentRoutes;
@@ -112,8 +111,7 @@ export async function createRouteOnBackend(
   draft: RouteDraft,
   preview: Awaited<ReturnType<typeof buildRoutePreview>>,
 ): Promise<SavedRoute> {
-  const session = getAuthSession();
-  const userId = session.idUsuario;
+  const userId = useAuthStore.getState().user?.id_usuario;
 
   if (!userId) {
     throw new Error('Necesitas iniciar sesión para guardar una ruta.');
@@ -182,8 +180,7 @@ export async function updateRouteOnBackend(
   preview: Awaited<ReturnType<typeof buildRoutePreview>>,
   fallbackRoute?: SavedRoute,
 ): Promise<SavedRoute> {
-  const session = getAuthSession();
-  const userId = session.idUsuario;
+  const userId = useAuthStore.getState().user?.id_usuario;
 
   if (!userId) {
     throw new Error('Necesitas iniciar sesión para actualizar una ruta.');
