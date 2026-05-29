@@ -1,14 +1,45 @@
 import * as Location from "expo-location";
-import * as Notifications from "expo-notifications";
-import { useEffect } from "react";
-import Constants from "expo-constants";
+import { useEffect, useRef } from "react";
+import { useDeviceStore } from "@/shared/store/useDeviceStore";
+import { useAuthStore } from "@/shared/store/useAuthStore";
 
-const API_URL_DEPLOY =
+const API_URL_SYNC =
   "https://revibo-backend.onrender.com/api/v1/device-token/sync";
 
-export const useLocationSync = (authToken?: string) => {
+/**
+ * Hook responsable de:
+ * 1. Activar watchPositionAsync para tracking continuo
+ * 2. Sincronizar ubicación periódicamente al backend
+ * 3. Enviar el token push en cada actualización
+ * 4. Incluir Authorization header si el usuario está logueado
+ *
+ * NO vuelve a obtener el Expo Push Token (lo obtiene del store)
+ * NO reinicia el watcher a menos que sea necesario
+ * Usa useRef para el authToken para evitar rerenders
+ */
+export const useLocationSync = () => {
+  const subscriptionRef = useRef<Location.LocationSubscription | null>(null);
+  const authTokenRef = useRef<string | null>(null);
+  const expoPushTokenRef = useRef<string | null>(null);
+
+  // Selecciona solo el token de push que necesita
+  const expoPushToken = useDeviceStore((state) => state.expoPushToken);
+
+  // Selecciona solo el accessToken que necesita
+  const accessToken = useAuthStore((state) => state.accessToken);
+
+  // Actualiza las referencias cuando cambian (sin disparar efectos)
   useEffect(() => {
-    let subscription: Location.LocationSubscription | null = null;
+    authTokenRef.current = accessToken;
+  }, [accessToken]);
+
+  useEffect(() => {
+    expoPushTokenRef.current = expoPushToken;
+  }, [expoPushToken]);
+
+  // Inicia el watcher de ubicación UNA SOLA VEZ
+  useEffect(() => {
+    let isMounted = true;
 
     const startTracking = async () => {
       try {
@@ -16,46 +47,49 @@ export const useLocationSync = (authToken?: string) => {
           await Location.requestForegroundPermissionsAsync();
 
         if (status !== "granted") {
-          console.log("Permiso de ubicación denegado");
+          console.log("❌ Permiso de ubicación denegado");
           return;
         }
 
-        console.log("Iniciando location sync...");
+        console.log("📍 Iniciando sincronización de ubicación...");
 
-        subscription = await Location.watchPositionAsync(
+        subscriptionRef.current = await Location.watchPositionAsync(
           {
             accuracy: Location.Accuracy.Balanced,
-
-            // PARA TESTING ↓↓↓
-            timeInterval: 10 * 60 * 1000,
-            distanceInterval: 1000,
+            timeInterval: 10 * 60 * 1000, // 10 minutos
+            distanceInterval: 1000, // 1 km
           },
           async (location) => {
+            if (!isMounted) return;
+
             try {
-              console.log(
-                "Nueva ubicación detectada:",
-                location.coords.latitude,
-                location.coords.longitude
-              );
+              const token = expoPushTokenRef.current;
+              const authToken = authTokenRef.current;
 
-              const tokenData =
-                await Notifications.getExpoPushTokenAsync({
-                  projectId:
-                    Constants.expoConfig?.extra?.eas?.projectId,
-                });
+              if (!token) {
+                console.log(
+                  "⚠️ Expo Push Token no disponible aún, saltando sync"
+                );
+                return;
+              }
 
-              const token = tokenData.data;
+              console.log("📍 Nueva ubicación:", {
+                lat: location.coords.latitude,
+                lng: location.coords.longitude,
+              });
 
-              const response = await fetch(API_URL_DEPLOY, {
+              const headers: Record<string, string> = {
+                "Content-Type": "application/json",
+              };
+
+              // Añadir Authorization si el usuario está logueado
+              if (authToken) {
+                headers.Authorization = `Bearer ${authToken}`;
+              }
+
+              const response = await fetch(API_URL_SYNC, {
                 method: "POST",
-                headers: {
-                  "Content-Type": "application/json",
-                  ...(authToken
-                    ? {
-                        Authorization: `Bearer ${authToken}`,
-                      }
-                    : {}),
-                },
+                headers,
                 body: JSON.stringify({
                   token,
                   lng: location.coords.longitude,
@@ -65,23 +99,29 @@ export const useLocationSync = (authToken?: string) => {
 
               const data = await response.json();
 
-              console.log("Sync exitoso:", data);
-
+              if (response.ok) {
+                console.log("✓ Ubicación sincronizada:", {
+                  logged_in: !!authToken,
+                });
+              } else {
+                console.log("⚠️ Error en sync:", data);
+              }
             } catch (error) {
-              console.log("Error sincronizando ubicación", error);
+              console.log("❌ Error sincronizando ubicación:", error);
             }
           }
         );
       } catch (error) {
-        console.log("Error iniciando tracking", error);
+        console.log("❌ Error iniciando tracking:", error);
       }
     };
 
     startTracking();
 
     return () => {
-      console.log("Removiendo location subscription...");
-      subscription?.remove();
+      isMounted = false;
+      console.log("🛑 Deteniendo sincronización de ubicación...");
+      subscriptionRef.current?.remove();
     };
-  }, [authToken]);
+  }, []); // ✓ Vacío: se ejecuta una sola vez
 };
