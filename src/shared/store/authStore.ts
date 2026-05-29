@@ -1,6 +1,7 @@
 type AuthSession = {
   isRegistered: boolean;
   accessToken: string | null;
+  idUsuario: string | null;
   name: string | null;
   email: string | null;
   rol: string | null;
@@ -9,6 +10,7 @@ type AuthSession = {
 let authSession: AuthSession = {
   isRegistered: false,
   accessToken: null,
+  idUsuario: null,
   name: null,
   email: null,
   rol: null,
@@ -21,6 +23,7 @@ export const setRegistered = (
     ...authSession,
     isRegistered: true,
     accessToken: session?.accessToken ?? authSession.accessToken,
+    idUsuario: session?.idUsuario ?? authSession.idUsuario,
     name: session?.name ?? authSession.name,
     email: session?.email ?? authSession.email,
     rol: session?.rol ?? authSession.rol,
@@ -37,6 +40,7 @@ export const logout = () => {
   authSession = {
     isRegistered: false,
     accessToken: null,
+    idUsuario: null,
     name: null,
     email: null,
     rol: null,

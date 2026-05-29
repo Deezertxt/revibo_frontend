@@ -1,5 +1,6 @@
 import { buildRoutePreview } from '@/features/rutas/services/rutas.service';
 import { buildRouteSummary, type RouteCoordinate, type RouteDraft, type SavedRoute } from '@/features/rutas/types';
+import { getAuthSession } from '@/shared/store/authStore';
 
 const BASE_URL = process.env.EXPO_PUBLIC_API_URL
   ? `${process.env.EXPO_PUBLIC_API_URL.trim()}/api/v1`
@@ -78,7 +79,14 @@ export async function loadRoutesFromBackend(
   token: string,
   currentRoutes: SavedRoute[] = [],
 ): Promise<SavedRoute[]> {
-  const response = await fetch(`${API_URL}/rutas/me`, {
+  const session = getAuthSession();
+  const userId = session.idUsuario;
+
+  if (!userId) {
+    return currentRoutes;
+  }
+
+  const response = await fetch(`${API_URL}/rutas/${userId}`, {
     headers: {
       Accept: 'application/json',
       Authorization: `Bearer ${token}`,
@@ -104,6 +112,13 @@ export async function createRouteOnBackend(
   draft: RouteDraft,
   preview: Awaited<ReturnType<typeof buildRoutePreview>>,
 ): Promise<SavedRoute> {
+  const session = getAuthSession();
+  const userId = session.idUsuario;
+
+  if (!userId) {
+    throw new Error('Necesitas iniciar sesión para guardar una ruta.');
+  }
+
   const normalizedStops = draft.stops
     .map((stop: string) => stop.trim())
     .filter((stop: string) => stop.length > 0);
@@ -117,7 +132,10 @@ export async function createRouteOnBackend(
     throw new Error('No se pudo calcular la geometría de la ruta.');
   }
 
-  const response = await fetch(`${API_URL}/rutas/me`, {
+  const originCoordinate = routeCoordinates[0];
+  const destinationCoordinate = routeCoordinates[routeCoordinates.length - 1];
+
+  const response = await fetch(`${API_URL}/rutas/${userId}`, {
     method: 'POST',
     headers: {
       Accept: 'application/json',
@@ -130,6 +148,10 @@ export async function createRouteOnBackend(
       tiempo: Math.max(1, Math.round((preview.distanceKm / 40) * 3600)),
       origen_nombre: normalizedStops[0] ?? draft.name.trim(),
       destino_nombre: normalizedStops[normalizedStops.length - 1] ?? draft.name.trim(),
+      origen_lat: originCoordinate.latitude,
+      origen_lng: originCoordinate.longitude,
+      destino_lat: destinationCoordinate.latitude,
+      destino_lng: destinationCoordinate.longitude,
       ruta: {
         type: 'LineString',
         coordinates: routeCoordinates.map(({ latitude, longitude }) => [longitude, latitude]),

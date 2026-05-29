@@ -4,13 +4,13 @@ import { useRouter } from "expo-router";
 import React, { useState } from "react";
 import { Controller, useForm } from "react-hook-form";
 import {
-  ActivityIndicator,
-  Alert,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
+    ActivityIndicator,
+    Alert,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
 } from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-aware-scroll-view";
 
@@ -56,6 +56,7 @@ export default function RegisterUserScreen() {
 
       setRegistered({
         accessToken: result.accessToken,
+        idUsuario: result.user.id_usuario,
         name: result.user.nombre,
         email: result.user.correo,
       });
