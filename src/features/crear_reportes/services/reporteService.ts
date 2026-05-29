@@ -9,6 +9,8 @@ export type CrearReportePayload = {
   descripcion: string;
   tipo_reporte: string;
   gravedad_reporte: string;
+  fecha_inicio: string | null;
+  fecha_fin: string | null;
   geom: {
     type: "Point" | "LineString";
     coordinates: number[] | number[][];
@@ -38,11 +40,16 @@ export async function crearReporte(
     body: JSON.stringify(payload),
   });
 
-  const responseBody = (await response
-    .json()
-    .catch(() => null)) as ReporteResponse | null;
+  const responseBody = (await response.json().catch(() => null)) as any;
 
   if (!response.ok) {
+    if (responseBody?.errors) {
+      const detalle = Object.entries(responseBody.errors)
+        .map(([campo, msgs]: any) => `${campo}: ${msgs.join(", ")}`)
+        .join(" | ");
+      throw new Error(`Fallo de Validación -> ${detalle}`);
+    }
+
     const message = responseBody?.message ?? "Error al crear el reporte.";
     throw new Error(message);
   }

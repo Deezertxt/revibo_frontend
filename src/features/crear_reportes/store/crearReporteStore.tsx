@@ -23,6 +23,8 @@ interface ReporteState {
   descripcion: string;
   tipo_reporte: TipoReporte | null;
   gravedad_reporte: GravedadReporte | null;
+  fecha_inicio: string | null;
+  fecha_fin: string | null;
   geom: {
     type: "Point" | "LineString";
     coordinates: any;
@@ -44,6 +46,8 @@ const initialState = {
   descripcion: "",
   tipo_reporte: null,
   gravedad_reporte: null,
+  fecha_inicio: null,
+  fecha_fin: null,
   geom: null,
   direccionTexto: "",
   url_imagen: [],

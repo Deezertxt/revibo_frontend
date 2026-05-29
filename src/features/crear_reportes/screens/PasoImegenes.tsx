@@ -12,17 +12,22 @@ import {
   View,
 } from "react-native";
 
-// Importamos el servicio y los stores
 import { useAuthStore } from "../../../shared/store/useAuthStore";
 import { uploadImageToCloudinary } from "../services/cloudinaryService";
 import { crearReporte } from "../services/reporteService";
 import { useCrearReporteStore } from "../store/crearReporteStore";
 
+const formatearVista = (fechaStr: string | null): string => {
+  if (!fechaStr) return "-";
+  const d = new Date(fechaStr.replace(" ", "T"));
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()}  |  ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+};
+
 export default function PasoImagenes() {
   const store = useCrearReporteStore();
   const accessToken = useAuthStore((state) => state.accessToken);
   const [loading, setLoading] = useState(false);
-
   const [imagenesLocales, setImagenesLocales] = useState<string[]>([]);
 
   const seleccionarImagen = async () => {
@@ -96,6 +101,8 @@ export default function PasoImagenes() {
         descripcion: store.descripcion,
         tipo_reporte: store.tipo_reporte || "",
         gravedad_reporte: store.gravedad_reporte || "",
+        fecha_inicio: store.fecha_inicio,
+        fecha_fin: store.fecha_fin,
         geom: store.geom,
         url_imagen: urlsDeInternet,
       };
@@ -198,7 +205,6 @@ export default function PasoImagenes() {
           {imagenesLocales.length} de 5 imágenes cargadas.
         </Text>
 
-        {/* Sección Resumen */}
         <Text style={styles.sectionTitle}>Resumen del reporte</Text>
         <View style={styles.summaryCard}>
           <View style={styles.summaryRow}>
@@ -216,6 +222,24 @@ export default function PasoImagenes() {
               </Text>
             </View>
           </View>
+
+          {store.tipo_reporte === "cierre_programado" && (
+            <>
+              <View style={styles.summaryRow}>
+                <Text style={styles.summaryLabel}>Inicio del Cierre</Text>
+                <Text style={styles.summaryValue}>
+                  {formatearVista(store.fecha_inicio)}
+                </Text>
+              </View>
+
+              <View style={styles.summaryRow}>
+                <Text style={styles.summaryLabel}>Fin del Cierre</Text>
+                <Text style={styles.summaryValue}>
+                  {formatearVista(store.fecha_fin)}
+                </Text>
+              </View>
+            </>
+          )}
 
           <View style={styles.summaryRow}>
             <Text style={styles.summaryLabel}>Gravedad</Text>
@@ -235,7 +259,6 @@ export default function PasoImagenes() {
             </View>
           </View>
 
-          {/* Fila de Ubicación */}
           <View
             style={[
               styles.summaryRow,
@@ -250,7 +273,6 @@ export default function PasoImagenes() {
         </View>
       </ScrollView>
 
-      {/* Botón Publicar */}
       <View style={styles.footer}>
         <TouchableOpacity
           onPress={publicar}
