@@ -11,11 +11,13 @@ import {
 } from "react-native";
 
 import { logoutUser } from "@/features/auth/services/auth.service";
+import { useRoutesStore } from "@/features/rutas/store/rutasStore";
 
 export default function PerfilScreen() {
   const router = useRouter();
   const session = getAuthSession();
   const [cargando, setCargando] = useState(false);
+  const resetRoutes = useRoutesStore((state) => state.resetRoutes);
 
   const handleLogout = async () => {
     setCargando(true);
@@ -28,6 +30,7 @@ export default function PerfilScreen() {
       console.log("Error al cerrar sesión en el servidor:", error.message);
     } finally {
       logout();
+      resetRoutes();
       setCargando(false);
 
       //redirección

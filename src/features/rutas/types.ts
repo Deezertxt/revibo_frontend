@@ -23,18 +23,6 @@ export type RouteDraft = {
   routeType: RouteType;
 };
 
-export const ROUTE_TYPE_LABELS: Record<RouteType, string> = {
-  carretera_nueva: 'Carretera nueva',
-  carretera_antigua: 'Carretera antigua',
-  alternativa: 'Alternativa',
-};
-
-export const ROUTE_TYPE_COLORS: Record<RouteType, string> = {
-  carretera_nueva: '#5B3FD9',
-  carretera_antigua: '#0E9F6E',
-  alternativa: '#D97706',
-};
-
 export const ROUTE_STOP_COLORS = {
   origin: '#5B3FD9',
   middle: '#D97706',

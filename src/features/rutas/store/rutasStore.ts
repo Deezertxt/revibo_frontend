@@ -2,13 +2,14 @@ import { create } from 'zustand';
 
 import {
   createRouteOnBackend,
+  deleteRouteOnBackend,
   loadRoutesFromBackend,
+  updateRouteOnBackend,
 } from '@/features/rutas/services/rutas.api.service';
 import {
   buildRoutePreview,
 } from '@/features/rutas/services/rutas.service';
 import {
-  buildRouteSummary,
   type RouteDraft,
   type SavedRoute,
 } from '@/features/rutas/types';
@@ -20,50 +21,15 @@ type RoutesState = {
   isLoading: boolean;
   loadRoutes: () => Promise<void>;
   setSelectedRouteId: (routeId: string | null) => void;
+  resetRoutes: () => void;
   createRoute: (draft: RouteDraft) => Promise<SavedRoute>;
-  updateRoute: (routeId: string, draft: RouteDraft) => Promise<SavedRoute | null>;
-  deleteRoute: (routeId: string) => void;
+  updateRoute: (routeId: string, draft: RouteDraft) => Promise<SavedRoute>;
+  deleteRoute: (routeId: string) => Promise<void>;
   getRouteById: (routeId: string) => SavedRoute | undefined;
 };
 
-const now = new Date().toISOString();
-
-const seedRoutes: SavedRoute[] = [
-  {
-    id: 'route-cocha-scz',
-    name: 'Cochabamba → Santa Cruz',
-    stops: ['Cochabamba', 'Paracti', 'Corani', 'Santa Cruz'],
-    summary: 'Cochabamba · Paracti · Corani · Santa Cruz',
-    routeType: 'carretera_nueva',
-    distanceKm: 478,
-    coordinates: [
-      { latitude: -17.3895, longitude: -66.1568 },
-      { latitude: -17.45, longitude: -65.45 },
-      { latitude: -17.73, longitude: -64.31 },
-      { latitude: -17.7833, longitude: -63.1821 },
-    ],
-    createdAt: now,
-    updatedAt: now,
-  },
-  {
-    id: 'route-cocha-lpz',
-    name: 'Cochabamba → La Paz',
-    stops: ['Cochabamba', 'Caracollo', 'La Paz'],
-    summary: 'Cochabamba · Caracollo · La Paz',
-    routeType: 'carretera_antigua',
-    distanceKm: 392,
-    coordinates: [
-      { latitude: -17.3895, longitude: -66.1568 },
-      { latitude: -17.665, longitude: -66.35 },
-      { latitude: -16.4897, longitude: -68.1193 },
-    ],
-    createdAt: now,
-    updatedAt: now,
-  },
-];
-
 export const useRoutesStore = create<RoutesState>((set, get) => ({
-  routes: seedRoutes,
+  routes: [],
   selectedRouteId: null,
   isLoading: false,
   loadRoutes: async () => {
@@ -84,6 +50,12 @@ export const useRoutesStore = create<RoutesState>((set, get) => ({
     }
   },
   setSelectedRouteId: (routeId) => set({ selectedRouteId: routeId }),
+  resetRoutes: () =>
+    set({
+      routes: [],
+      selectedRouteId: null,
+      isLoading: false,
+    }),
   createRoute: async (draft) => {
     const preview = await buildRoutePreview(draft);
     const token = getAccessToken();
@@ -102,39 +74,40 @@ export const useRoutesStore = create<RoutesState>((set, get) => ({
     return storedRoute;
   },
   updateRoute: async (routeId, draft) => {
+    const token = getAccessToken();
+
+    if (!token) {
+      throw new Error('Necesitas iniciar sesión para actualizar una ruta.');
+    }
+
     const preview = await buildRoutePreview(draft);
-    const currentDate = new Date().toISOString();
-    let updatedRoute: SavedRoute | null = null;
+    const currentRoute = get().routes.find((route) => route.id === routeId);
+
+    if (!currentRoute) {
+      throw new Error('La ruta que quieres editar ya no existe.');
+    }
+
+    const updatedRoute = await updateRouteOnBackend(token, routeId, draft, preview, currentRoute);
 
     set((state) => ({
-      routes: state.routes.map((route) => {
-        if (route.id !== routeId) {
-          return route;
-        }
-
-        updatedRoute = {
-          ...route,
-          name: draft.name.trim(),
-          stops: draft.stops
-            .map((stop: string) => stop.trim())
-            .filter((stop: string) => stop.length > 0),
-          summary: buildRouteSummary(draft.stops),
-          routeType: draft.routeType,
-          distanceKm: preview.distanceKm,
-          coordinates: preview.coordinates,
-          updatedAt: currentDate,
-        };
-
-        return updatedRoute;
-      }),
+      routes: state.routes.map((route) => (route.id === routeId ? updatedRoute : route)),
     }));
 
     return updatedRoute;
   },
-  deleteRoute: (routeId) =>
+  deleteRoute: async (routeId) => {
+    const token = getAccessToken();
+
+    if (!token) {
+      throw new Error('Necesitas iniciar sesión para eliminar una ruta.');
+    }
+
+    await deleteRouteOnBackend(token, routeId);
+
     set((state) => ({
       routes: state.routes.filter((route) => route.id !== routeId),
       selectedRouteId: state.selectedRouteId === routeId ? null : state.selectedRouteId,
-    })),
+    }));
+  },
   getRouteById: (routeId) => get().routes.find((route) => route.id === routeId),
 }));

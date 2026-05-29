@@ -174,3 +174,92 @@ export async function createRouteOnBackend(
     coordinates: preview.coordinates,
   });
 }
+
+export async function updateRouteOnBackend(
+  token: string,
+  routeId: string,
+  draft: RouteDraft,
+  preview: Awaited<ReturnType<typeof buildRoutePreview>>,
+  fallbackRoute?: SavedRoute,
+): Promise<SavedRoute> {
+  const session = getAuthSession();
+  const userId = session.idUsuario;
+
+  if (!userId) {
+    throw new Error('Necesitas iniciar sesión para actualizar una ruta.');
+  }
+
+  const normalizedStops = draft.stops
+    .map((stop: string) => stop.trim())
+    .filter((stop: string) => stop.length > 0);
+  const routeCoordinates = preview.coordinates.length > 1
+    ? preview.coordinates
+    : preview.coordinates.length === 1
+      ? [preview.coordinates[0], preview.coordinates[0]]
+      : [];
+
+  if (routeCoordinates.length < 2) {
+    throw new Error('No se pudo calcular la geometría de la ruta.');
+  }
+
+  const originCoordinate = routeCoordinates[0];
+  const destinationCoordinate = routeCoordinates[routeCoordinates.length - 1];
+
+  const response = await fetch(`${API_URL}/rutas/${routeId}`, {
+    method: 'PATCH',
+    headers: {
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({
+      nombre: draft.name.trim(),
+      distancia: Math.max(1, Math.round(preview.distanceKm)),
+      tiempo: Math.max(1, Math.round((preview.distanceKm / 40) * 3600)),
+      origen_nombre: normalizedStops[0] ?? draft.name.trim(),
+      destino_nombre: normalizedStops[normalizedStops.length - 1] ?? draft.name.trim(),
+      origen_lat: originCoordinate.latitude,
+      origen_lng: originCoordinate.longitude,
+      destino_lat: destinationCoordinate.latitude,
+      destino_lng: destinationCoordinate.longitude,
+      ruta: {
+        type: 'LineString',
+        coordinates: routeCoordinates.map(({ latitude, longitude }) => [longitude, latitude]),
+      },
+    }),
+  });
+
+  const responseBody = (await response.json().catch(() => null)) as BackendResponse<BackendRouteResource> | null;
+
+  if (!response.ok || !responseBody?.data) {
+    throw new Error(responseBody?.message ?? 'No se pudo actualizar la ruta en el backend.');
+  }
+
+  return toSavedRoute(responseBody.data, {
+    id: routeId,
+    name: draft.name.trim(),
+    stops: normalizedStops,
+    summary: buildRouteSummary(normalizedStops),
+    routeType: draft.routeType,
+    distanceKm: preview.distanceKm,
+    coordinates: preview.coordinates,
+    createdAt: fallbackRoute?.createdAt,
+    updatedAt: new Date().toISOString(),
+  });
+}
+
+export async function deleteRouteOnBackend(token: string, routeId: string): Promise<void> {
+  const response = await fetch(`${API_URL}/rutas/${routeId}`, {
+    method: 'DELETE',
+    headers: {
+      Accept: 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+  });
+
+  const responseBody = (await response.json().catch(() => null)) as BackendResponse<null> | null;
+
+  if (!response.ok) {
+    throw new Error(responseBody?.message ?? 'No se pudo eliminar la ruta en el backend.');
+  }
+}

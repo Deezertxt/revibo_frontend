@@ -30,7 +30,6 @@ import {
 } from '@/features/incidents/types';
 import { getSavedMapRegion, setSavedMapRegion } from '@/features/map/map-view-state';
 import { useRoutesStore } from '@/features/rutas/store/rutasStore';
-import { ROUTE_TYPE_COLORS, ROUTE_TYPE_LABELS } from '@/features/rutas/types';
 import { useAlertsStore } from '@/shared/store/alertsStore';
 
 const PRIMARY = '#5B3FD9';
@@ -589,22 +588,21 @@ export default function MapHomeScreen() {
             {routePreview.coordinates.length > 1 ? (
               <Polyline
                 coordinates={routePreview.coordinates}
-                strokeColor={ROUTE_TYPE_COLORS[routePreview.routeType]}
+                strokeColor={PRIMARY}
                 strokeWidth={5}
-                lineDashPattern={routePreview.routeType === 'alternativa' ? [8, 6] : undefined}
               />
             ) : null}
 
             <Marker
               coordinate={routePreview.coordinates[0]}
-              pinColor={ROUTE_TYPE_COLORS[routePreview.routeType]}
+              pinColor={PRIMARY}
               title={routePreview.name}
             />
 
             {routePreview.coordinates.length > 1 ? (
               <Marker
                 coordinate={routePreview.coordinates[routePreview.coordinates.length - 1]}
-                pinColor={ROUTE_TYPE_COLORS[routePreview.routeType]}
+                pinColor={PRIMARY}
                 title={`${routePreview.name} · destino`}
               />
             ) : null}
@@ -655,9 +653,7 @@ export default function MapHomeScreen() {
           </View>
           <View style={styles.routePreviewTextBlock}>
             <Text style={styles.routePreviewTitle}>{routePreview.name}</Text>
-            <Text style={styles.routePreviewSubtitle}>
-              {ROUTE_TYPE_LABELS[routePreview.routeType]} · {Math.round(routePreview.distanceKm)} km
-            </Text>
+            <Text style={styles.routePreviewSubtitle}>{Math.round(routePreview.distanceKm)} km</Text>
           </View>
           <Pressable
             onPress={clearRoutePreview}
@@ -787,7 +783,7 @@ export default function MapHomeScreen() {
                     },
                   })
                 }>
-                <Text style={styles.routeButtonText}>Ver ruta alternativa</Text>
+                <Text style={styles.routeButtonText}>Ver ruta</Text>
                 <MaterialIcons name="arrow-forward" size={18} color="#FFFFFF" />
               </Pressable>
             ) : (

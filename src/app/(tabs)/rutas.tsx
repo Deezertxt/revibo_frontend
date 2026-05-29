@@ -18,13 +18,11 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRoutesStore } from '@/features/rutas/store/rutasStore';
 import {
   ROUTE_STOP_COLORS,
-  ROUTE_TYPE_COLORS,
-  ROUTE_TYPE_LABELS,
   formatRouteDistance,
   type RouteDraft,
-  type RouteType,
   type SavedRoute,
 } from '@/features/rutas/types';
+import { getAuthSession } from '@/shared/store/authStore';
 
 type ScreenMode = 'list' | 'create' | 'edit';
 
@@ -46,6 +44,7 @@ export default function RutasScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<SearchParams>();
+  const session = getAuthSession();
 
   const routes = useRoutesStore((state) => state.routes);
   const isLoading = useRoutesStore((state) => state.isLoading);
@@ -76,7 +75,20 @@ export default function RutasScreen() {
         ? 'edit'
         : 'list';
 
+  const canCreateRoutes = Boolean(session.isRegistered && session.accessToken);
+
+  useEffect(() => {
+    if (screenMode === 'create' && !canCreateRoutes) {
+      router.replace('/(tabs)/perfil');
+    }
+  }, [canCreateRoutes, router, screenMode]);
+
   const openCreateForm = () => {
+    if (!canCreateRoutes) {
+      router.push('/(tabs)/perfil');
+      return;
+    }
+
     router.push({ pathname: '/(tabs)/rutas', params: { mode: 'create' } });
   };
 
@@ -105,7 +117,14 @@ export default function RutasScreen() {
         {
           text: 'Eliminar',
           style: 'destructive',
-          onPress: () => deleteRoute(route.id),
+          onPress: () => {
+            void deleteRoute(route.id).catch((error) => {
+              Alert.alert(
+                'No se pudo eliminar',
+                error instanceof Error ? error.message : 'Intenta nuevamente.',
+              );
+            });
+          },
         },
       ],
     );
@@ -116,6 +135,10 @@ export default function RutasScreen() {
   }
 
   if (screenMode === 'create' || screenMode === 'edit') {
+    if (screenMode === 'create' && !canCreateRoutes) {
+      return <LoadingScreen topInset={insets.top} />;
+    }
+
     return (
       <RouteFormScreen
         mode={screenMode}
@@ -161,7 +184,7 @@ export default function RutasScreen() {
         {incidentId ? (
           <View style={styles.contextCard}>
             <Text style={styles.contextLabel}>Contexto activo</Text>
-            <Text style={styles.contextTitle}>Ruta alternativa para incidente {incidentId}</Text>
+            <Text style={styles.contextTitle}>Ruta sugerida para incidente {incidentId}</Text>
             <Text style={styles.contextSubtitle}>
               Zona excluida: {incidentLat ?? '-'}, {incidentLng ?? '-'}
             </Text>
@@ -208,7 +231,6 @@ function RouteFormScreen({
   const isEditMode = mode === 'edit';
   const [name, setName] = useState('');
   const [stops, setStops] = useState<string[]>(['', '', '']);
-  const [routeType, setRouteType] = useState<RouteType>('carretera_nueva');
   const [saving, setSaving] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
@@ -220,13 +242,11 @@ function RouteFormScreen({
           ? route.stops
           : [...route.stops, ...Array(3 - route.stops.length).fill('')],
       );
-      setRouteType(route.routeType);
       return;
     }
 
     setName('');
     setStops(['', '', '']);
-    setRouteType('carretera_nueva');
   }, [route]);
 
   const canSave =
@@ -264,7 +284,7 @@ function RouteFormScreen({
     try {
       await onSave({
         name,
-        routeType,
+        routeType: 'carretera_nueva',
         stops,
       });
     } catch (error) {
@@ -373,21 +393,16 @@ function RouteCard({
   onNavigate: () => void;
   onDelete: () => void;
 }) {
-  const typeColor = ROUTE_TYPE_COLORS[route.routeType];
-
   return (
     <View style={styles.routeCard}>
       <View style={styles.routeCardTopRow}>
-        <View style={[styles.routeCardIcon, { backgroundColor: `${typeColor}14` }]}>
-          <MaterialIcons name="alt-route" size={22} color={typeColor} />
+        <View style={[styles.routeCardIcon, { backgroundColor: `${PRIMARY}14` }]}>
+          <MaterialIcons name="alt-route" size={22} color={PRIMARY} />
         </View>
 
         <View style={styles.routeCardBody}>
           <Text style={styles.routeCardTitle}>{route.name}</Text>
-          <Text style={styles.routeCardMeta}>
-            {route.stops.length} paradas · {formatRouteDistance(route.distanceKm)} ·{' '}
-            {ROUTE_TYPE_LABELS[route.routeType]}
-          </Text>
+          <Text style={styles.routeCardMeta}>{route.stops.length} paradas · {formatRouteDistance(route.distanceKm)}</Text>
         </View>
       </View>
 
@@ -520,32 +535,6 @@ function RouteStopRow({
         </Pressable>
       ) : null}
     </View>
-  );
-}
-
-function RouteTypeChip({
-  label,
-  active,
-  color,
-  onPress,
-}: {
-  label: string;
-  active: boolean;
-  color: string;
-  onPress: () => void;
-}) {
-  return (
-    <Pressable
-      onPress={onPress}
-      style={[
-        styles.routeTypeChip,
-        active ? { backgroundColor: color, borderColor: color } : styles.routeTypeChipInactive,
-      ]}
-    >
-      <Text style={[styles.routeTypeChipText, active ? styles.routeTypeChipTextActive : styles.routeTypeChipTextInactive]}>
-        {label}
-      </Text>
-    </Pressable>
   );
 }
 
@@ -979,37 +968,6 @@ const styles = StyleSheet.create({
     color: '#5B3FD9',
     fontSize: 14,
     fontWeight: '800',
-  },
-  routeTypeGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 10,
-  },
-  routeTypeChip: {
-    minWidth: '46%',
-    minHeight: 42,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#E4DFF5',
-    backgroundColor: '#FFFFFF',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 10,
-  },
-  routeTypeChipInactive: {
-    backgroundColor: '#FFFFFF',
-    borderColor: '#E4DFF5',
-  },
-  routeTypeChipText: {
-    fontSize: 12,
-    fontWeight: '800',
-    textAlign: 'center',
-  },
-  routeTypeChipTextActive: {
-    color: '#FFFFFF',
-  },
-  routeTypeChipTextInactive: {
-    color: PRIMARY,
   },
   errorText: {
     marginHorizontal: 16,
