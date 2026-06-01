@@ -12,7 +12,7 @@ import { useCrearReporteStore } from "./store/crearReporteStore";
 
 // Pantallas
 import PasoImagenes from "./screens/PasoImegenes";
-import PasoInformacion from "./screens/PasoInformación";
+import PasoInformacion from "./screens/PasoInformacion";
 import PasoUbicacion from "./screens/PasoUbicación";
 
 export default function CrearReporteFeature() {

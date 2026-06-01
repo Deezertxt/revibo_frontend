@@ -1,8 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
-import DateTimePicker from "@react-native-community/datetimepicker"; // 🌟 Importamos el selector nativo
 import React, { useEffect, useState } from "react";
 import {
-  Platform,
+  Modal,
   ScrollView,
   StyleSheet,
   Text,
@@ -10,8 +9,52 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { Calendar, LocaleConfig } from "react-native-calendars";
 import { Selector } from "../componentes/Selectores";
 import { useCrearReporteStore } from "../store/crearReporteStore";
+
+LocaleConfig.locales["es"] = {
+  monthNames: [
+    "Enero",
+    "Febrero",
+    "Marzo",
+    "Abril",
+    "Mayo",
+    "Junio",
+    "Julio",
+    "Agosto",
+    "Septiembre",
+    "Octubre",
+    "Noviembre",
+    "Diciembre",
+  ],
+  monthNamesShort: [
+    "Ene.",
+    "Feb.",
+    "Mar",
+    "Abr",
+    "May",
+    "Jun",
+    "Jul.",
+    "Ago",
+    "Sep.",
+    "Oct.",
+    "Nov.",
+    "Dic.",
+  ],
+  dayNames: [
+    "Domingo",
+    "Lunes",
+    "Martes",
+    "Miércoles",
+    "Jueves",
+    "Viernes",
+    "Sábado",
+  ],
+  dayNamesShort: ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"],
+  today: "Hoy",
+};
+LocaleConfig.defaultLocale = "es";
 
 const TIPOS_OPTIONS = [
   {
@@ -52,18 +95,22 @@ const GRAVEDAD_OPTIONS = [
   { label: "Crítico", value: "Critico", color: "#B71C1C" },
 ];
 
-// 🌟 Función Helper para formatear la fecha a texto amigable "DD/MM/AAAA | HH:MM" en la UI
 const formatearVista = (fechaStr: string | null): string => {
   if (!fechaStr) return "";
-  const d = new Date(fechaStr.replace(" ", "T")); // Asegura compatibilidad con string de Laravel
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()}   |   ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  const partes = fechaStr.split(" ");
+  const fechaPartes = partes[0].split("-");
+  return `${fechaPartes[2]}/${fechaPartes[1]}/${fechaPartes[0]}   |   ${partes[1] ? partes[1].substring(0, 5) : "00:00"}`;
 };
 
-// 🌟 Función Helper para enviar los datos limpios que exige Laravel (YYYY-MM-DD HH:mm:ss)
-const formatearLaravel = (date: Date): string => {
+const formatearLaravel = (
+  year: number,
+  month: number,
+  day: number,
+  hours: number,
+  minutes: number,
+): string => {
   const pad = (num: number) => String(num).padStart(2, "0");
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+  return `${year}-${pad(month)}-${pad(day)} ${pad(hours)}:${pad(minutes)}:00`;
 };
 
 export default function PasoInformacion() {
@@ -78,17 +125,31 @@ export default function PasoInformacion() {
     setStep,
   } = useCrearReporteStore();
 
-  // Estados locales para controlar qué selector de fecha/hora se abre
-  const [pickerConfig, setPickerConfig] = useState<{
-    show: boolean;
-    campo: "fecha_inicio" | "fecha_fin";
-    mode: "date" | "time";
-  }>({ show: false, campo: "fecha_inicio", mode: "date" });
+  const [modalVisible, setModalVisible] = useState(false);
+  const [campoActual, setCampoActual] = useState<"fecha_inicio" | "fecha_fin">(
+    "fecha_inicio",
+  );
 
-  // 🌟 Efecto para inicializar la fecha_inicio con el "ahora" real si se elige cierre_programado
+  const [diaSeleccionado, setDiaSeleccionado] = useState({
+    year: new Date().getFullYear(),
+    month: new Date().getMonth() + 1,
+    day: new Date().getDate(),
+  });
+  const [hora, setHora] = useState(new Date().getHours());
+  const [minutos, setMinutos] = useState(new Date().getMinutes());
+
   useEffect(() => {
     if (tipo_reporte === "cierre_programado" && !fecha_inicio) {
-      updateData({ fecha_inicio: formatearLaravel(new Date()) });
+      const ahora = new Date();
+      updateData({
+        fecha_inicio: formatearLaravel(
+          ahora.getFullYear(),
+          ahora.getMonth() + 1,
+          ahora.getDate(),
+          ahora.getHours(),
+          ahora.getMinutes(),
+        ),
+      });
     }
   }, [tipo_reporte]);
 
@@ -96,7 +157,6 @@ export default function PasoInformacion() {
     (opt) => opt.value === tipo_reporte,
   );
   const mostrarAdicionales = tipo_reporte === "otro" || esAdicional;
-
   const requiereFechaFin = tipo_reporte === "cierre_programado";
   const fechaFinValida = requiereFechaFin
     ? fecha_fin && fecha_fin.length > 0
@@ -110,9 +170,16 @@ export default function PasoInformacion() {
         fecha_fin: null,
       });
     } else if (val === "cierre_programado") {
+      const ahora = new Date();
       updateData({
         tipo_reporte: "cierre_programado",
-        fecha_inicio: formatearLaravel(new Date()), // Autocompleta al instante
+        fecha_inicio: formatearLaravel(
+          ahora.getFullYear(),
+          ahora.getMonth() + 1,
+          ahora.getDate(),
+          ahora.getHours(),
+          ahora.getMinutes(),
+        ),
         fecha_fin: null,
       });
     } else {
@@ -124,45 +191,62 @@ export default function PasoInformacion() {
     }
   };
 
-  // Manejador cuando el usuario confirma una fecha o una hora en el calendario nativo
-  const onPickerChange = (event: any, selectedDate?: Date) => {
-    if (event.type === "dismissed" || !selectedDate) {
-      setPickerConfig((prev) => ({ ...prev, show: false }));
-      return;
-    }
+  const abrirPicker = (campo: "fecha_inicio" | "fecha_fin") => {
+    setCampoActual(campo);
+    const valorActual = campo === "fecha_inicio" ? fecha_inicio : fecha_fin;
 
-    const campoActual = pickerConfig.campo;
-    const valorActualEnStore =
-      campoActual === "fecha_inicio" ? fecha_inicio : fecha_fin;
-
-    // Si editamos, mezclamos el día previo con la hora nueva o viceversa
-    let fechaBase = valorActualEnStore
-      ? new Date(valorActualEnStore.replace(" ", "T"))
-      : new Date();
-
-    if (pickerConfig.mode === "date") {
-      fechaBase.setFullYear(
-        selectedDate.getFullYear(),
-        selectedDate.getMonth(),
-        selectedDate.getDate(),
-      );
-
-      // En Android, los pickers van uno por uno. Si seleccionó fecha, abrimos de inmediato el reloj (time)
-      if (Platform.OS === "android") {
-        setPickerConfig({ show: true, campo: campoActual, mode: "time" });
-        updateData({ [campoActual]: formatearLaravel(fechaBase) });
-        return;
-      }
+    if (valorActual) {
+      const partes = valorActual.split(" ");
+      const f = partes[0].split("-");
+      const h = partes[1].split(":");
+      setDiaSeleccionado({
+        year: parseInt(f[0]),
+        month: parseInt(f[1]),
+        day: parseInt(f[2]),
+      });
+      setHora(parseInt(h[0]));
+      setMinutos(parseInt(h[1]));
     } else {
-      fechaBase.setHours(selectedDate.getHours(), selectedDate.getMinutes());
+      const ahora = new Date();
+      setDiaSeleccionado({
+        year: ahora.getFullYear(),
+        month: ahora.getMonth() + 1,
+        day: ahora.getDate(),
+      });
+      setHora(ahora.getHours());
+      setMinutos(ahora.getMinutes());
     }
-
-    updateData({ [campoActual]: formatearLaravel(fechaBase) });
-    setPickerConfig((prev) => ({ ...prev, show: false }));
+    setModalVisible(true);
   };
 
-  const abrirPicker = (campo: "fecha_inicio" | "fecha_fin") => {
-    setPickerConfig({ show: true, campo, mode: "date" });
+  const guardarFechaYHora = () => {
+    const stringLaravel = formatearLaravel(
+      diaSeleccionado.year,
+      diaSeleccionado.month,
+      diaSeleccionado.day,
+      hora,
+      minutos,
+    );
+    updateData({ [campoActual]: stringLaravel });
+    setModalVisible(false);
+  };
+
+  const ajustarHora = (cantidad: number) => {
+    setHora((prev) => {
+      let nueva = prev + cantidad;
+      if (nueva > 23) return 0;
+      if (nueva < 0) return 23;
+      return nueva;
+    });
+  };
+
+  const ajustarMinutos = (cantidad: number) => {
+    setMinutos((prev) => {
+      let nuevos = prev + cantidad;
+      if (nuevos > 59) return 0;
+      if (nuevos < 0) return 59;
+      return nuevos;
+    });
   };
 
   const esValido =
@@ -179,7 +263,6 @@ export default function PasoInformacion() {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
       >
-        {/* Input de Título */}
         <Text style={styles.inputLabel}>
           Título <Text style={{ color: "red" }}>*</Text>
         </Text>
@@ -190,7 +273,6 @@ export default function PasoInformacion() {
           onChangeText={(val) => updateData({ titulo: val })}
         />
 
-        {/* Input de Descripción */}
         <Text style={styles.inputLabel}>
           Descripción <Text style={{ color: "red" }}>*</Text>
         </Text>
@@ -207,7 +289,6 @@ export default function PasoInformacion() {
           <Text style={styles.charCount}>{descripcion.length} / 500</Text>
         </View>
 
-        {/* Selector Principal */}
         <Selector
           label="Tipo de reporte"
           options={TIPOS_OPTIONS}
@@ -215,7 +296,6 @@ export default function PasoInformacion() {
           onSelect={manejarSeleccionTipo}
         />
 
-        {/* Selector Desplegable de Adicionales */}
         {mostrarAdicionales && (
           <View style={styles.adicionalesContainer}>
             <Selector
@@ -228,7 +308,6 @@ export default function PasoInformacion() {
           </View>
         )}
 
-        {/* 🌟 SECCIÓN: Período del Cierre (Inicio y Fin Dinámicos) 🌟 */}
         {requiereFechaFin && (
           <View style={styles.cierreContainer}>
             <View style={styles.cierreHeader}>
@@ -238,9 +317,8 @@ export default function PasoInformacion() {
               </Text>
             </View>
 
-            {/* 🗓️ SUB-APARTADO: Fecha Inicio */}
             <Text style={styles.fechaLabel}>
-              Fecha de inicio <Text style={{ color: "red" }}>*</Text>
+              Fecha y hora de inicio <Text style={{ color: "red" }}>*</Text>
             </Text>
             <TouchableOpacity
               style={styles.fechaInputBox}
@@ -267,9 +345,8 @@ export default function PasoInformacion() {
 
             <View style={{ marginVertical: 6 }} />
 
-            {/* 🗓️ SUB-APARTADO: Fecha Fin */}
             <Text style={styles.fechaLabel}>
-              Fecha de fin <Text style={{ color: "red" }}>*</Text>
+              Fecha y hora de fin <Text style={{ color: "red" }}>*</Text>
             </Text>
             <TouchableOpacity
               style={styles.fechaInputBox}
@@ -293,14 +370,9 @@ export default function PasoInformacion() {
               </Text>
               <Ionicons name="time-outline" size={18} color="#AAA" />
             </TouchableOpacity>
-
-            <Text style={styles.cierreHelper}>
-              La fecha de fin debe ser posterior a la de inicio.
-            </Text>
           </View>
         )}
 
-        {/* Selector de Gravedad */}
         <Selector
           label="Gravedad"
           options={GRAVEDAD_OPTIONS}
@@ -318,24 +390,95 @@ export default function PasoInformacion() {
         </TouchableOpacity>
       </ScrollView>
 
-      {/* 🌟 COMPONENTE MODAL OCULTO DEL DATETIME PICKER */}
-      {pickerConfig.show && (
-        <DateTimePicker
-          value={
-            pickerConfig.campo === "fecha_inicio"
-              ? fecha_inicio
-                ? new Date(fecha_inicio.replace(" ", "T"))
-                : new Date()
-              : fecha_fin
-                ? new Date(fecha_fin.replace(" ", "T"))
-                : new Date()
-          }
-          mode={pickerConfig.mode}
-          is24Hour={true}
-          display={Platform.OS === "ios" ? "spinner" : "default"}
-          onChange={onPickerChange}
-        />
-      )}
+      <Modal transparent visible={modalVisible} animationType="slide">
+        <View style={styles.modalOverlay}>
+          <View style={styles.calendarCard}>
+            <Text style={styles.modalTitle}>
+              Configurar {campoActual === "fecha_inicio" ? "Inicio" : "Fin"}
+            </Text>
+
+            <Calendar
+              onDayPress={(day) =>
+                setDiaSeleccionado({
+                  year: day.year,
+                  month: day.month,
+                  day: day.day,
+                })
+              }
+              markedDates={{
+                [`${diaSeleccionado.year}-${String(diaSeleccionado.month).padStart(2, "0")}-${String(diaSeleccionado.day).padStart(2, "0")}`]:
+                  {
+                    selected: true,
+                    selectedColor: "#6347D1",
+                  },
+              }}
+              theme={{
+                todayTextColor: "#6347D1",
+                arrowColor: "#6347D1",
+                textMonthFontWeight: "bold",
+              }}
+            />
+
+            <View style={styles.timePickerContainer}>
+              <Text style={styles.timeLabel}>Hora:</Text>
+              <View style={styles.timeRow}>
+                <View style={styles.timeSelectorBox}>
+                  <TouchableOpacity
+                    onPress={() => ajustarHora(1)}
+                    style={styles.arrowBtn}
+                  >
+                    <Ionicons name="chevron-up" size={20} color="#6347D1" />
+                  </TouchableOpacity>
+                  <Text style={styles.timeValue}>
+                    {String(hora).padStart(2, "0")}
+                  </Text>
+                  <TouchableOpacity
+                    onPress={() => ajustarHora(-1)}
+                    style={styles.arrowBtn}
+                  >
+                    <Ionicons name="chevron-down" size={20} color="#6347D1" />
+                  </TouchableOpacity>
+                </View>
+
+                <Text style={styles.timeDivider}>:</Text>
+
+                <View style={styles.timeSelectorBox}>
+                  <TouchableOpacity
+                    onPress={() => ajustarMinutos(5)}
+                    style={styles.arrowBtn}
+                  >
+                    <Ionicons name="chevron-up" size={20} color="#6347D1" />
+                  </TouchableOpacity>
+                  <Text style={styles.timeValue}>
+                    {String(minutos).padStart(2, "0")}
+                  </Text>
+                  <TouchableOpacity
+                    onPress={() => ajustarMinutos(-5)}
+                    style={styles.arrowBtn}
+                  >
+                    <Ionicons name="chevron-down" size={20} color="#6347D1" />
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </View>
+
+            <View style={styles.modalActionRow}>
+              <TouchableOpacity
+                style={styles.btnCancelar}
+                onPress={() => setModalVisible(false)}
+              >
+                <Text style={styles.btnCancelarText}>Cancelar</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.btnAceptar}
+                onPress={guardarFechaYHora}
+              >
+                <Text style={styles.btnAceptarText}>Confirmar</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -431,12 +574,6 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: "#333",
   },
-  cierreHelper: {
-    fontSize: 13,
-    color: "#7662E4",
-    marginTop: 10,
-    fontWeight: "500",
-  },
   btnContinuar: {
     backgroundColor: "#6347D1",
     padding: 18,
@@ -450,6 +587,92 @@ const styles = StyleSheet.create({
   btnText: {
     color: "white",
     fontSize: 18,
+    fontWeight: "bold",
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    justifyContent: "flex-end",
+  },
+  calendarCard: {
+    backgroundColor: "#FFF",
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: 20,
+    width: "100%",
+  },
+  modalTitle: {
+    fontSize: 17,
+    fontWeight: "bold",
+    textAlign: "center",
+    marginBottom: 12,
+    color: "#333",
+  },
+  timePickerContainer: {
+    alignItems: "center",
+    marginVertical: 15,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: "#EEE",
+  },
+  timeLabel: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: "#555",
+    marginBottom: 8,
+  },
+  timeRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  timeSelectorBox: {
+    alignItems: "center",
+    backgroundColor: "#F5F5FA",
+    borderRadius: 12,
+    paddingHorizontal: 10,
+  },
+  arrowBtn: {
+    padding: 4,
+  },
+  timeValue: {
+    fontSize: 22,
+    fontWeight: "bold",
+    color: "#333",
+    marginVertical: 2,
+  },
+  timeDivider: {
+    fontSize: 24,
+    fontWeight: "bold",
+    color: "#6347D1",
+    marginHorizontal: 15,
+  },
+  modalActionRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginTop: 15,
+    gap: 12,
+  },
+  btnCancelar: {
+    flex: 1,
+    padding: 14,
+    borderRadius: 12,
+    alignItems: "center",
+    backgroundColor: "#F5F5F5",
+  },
+  btnCancelarText: {
+    color: "#666",
+    fontWeight: "bold",
+  },
+  btnAceptar: {
+    flex: 1,
+    padding: 14,
+    borderRadius: 12,
+    alignItems: "center",
+    backgroundColor: "#6347D1",
+  },
+  btnAceptarText: {
+    color: "#FFF",
     fontWeight: "bold",
   },
 });
