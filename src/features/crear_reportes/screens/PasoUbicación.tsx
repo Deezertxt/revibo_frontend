@@ -12,6 +12,7 @@ import {
   View,
 } from "react-native";
 import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from "react-native-maps";
+import { BuscadorBolivia } from "../componentes/BuscadorBolivia";
 import { useCrearReporteStore } from "../store/crearReporteStore";
 
 const { width } = Dimensions.get("window");
@@ -79,7 +80,6 @@ export default function PasoUbicacion() {
           },
         });
 
-        // nombre de la calle
         obtenerDireccionTexto(latInicial, lngInicial, false);
       } catch (error) {
         Alert.alert("Error de GPS", "No se pudo obtener la ubicación actual.");
@@ -211,8 +211,8 @@ export default function PasoUbicacion() {
   const activarModoTramo = () => {
     setEsTramo(true);
 
-    const latB = puntoA.latitude - 0.0015;
-    const lngB = puntoA.longitude + 0.0015;
+    const latB = puntoA.latitude - 0.0001;
+    const lngB = puntoA.longitude + 0.0001;
 
     setPuntoB({ latitude: latB, longitude: lngB });
     calcularRutaGratis(puntoA.latitude, puntoA.longitude, latB, lngB);
@@ -234,12 +234,37 @@ export default function PasoUbicacion() {
     });
   };
 
+  const manejarUbicacionBuscador = (
+    direccion: string,
+    lat: number,
+    lon: number,
+  ) => {
+    mapRef.current?.animateToRegion(
+      {
+        latitude: lat,
+        longitude: lon,
+        latitudeDelta: 0.004,
+        longitudeDelta: 0.004,
+      },
+      1000,
+    );
+
+    if (!esTramo) {
+      procesarCambioUbicacion(lat, lon, false);
+    } else {
+      procesarCambioUbicacion(lat, lon, true);
+    }
+  };
+
   return (
     <ScrollView
       style={styles.mainContainer}
       contentContainerStyle={{ paddingBottom: 20 }}
+      keyboardShouldPersistTaps="handled"
     >
       <Text style={styles.sectionTitle}>Ubicación del incidente</Text>
+
+      <BuscadorBolivia onLocationSelect={manejarUbicacionBuscador} />
 
       <View style={styles.mapWrapper}>
         {loadingGPS ? (
@@ -261,7 +286,6 @@ export default function PasoUbicacion() {
             showsUserLocation={true}
             onPress={handleMapPress}
           >
-            {/* Marcador Inicio / Punto Fijo */}
             <Marker
               coordinate={puntoA}
               draggable
@@ -273,7 +297,6 @@ export default function PasoUbicacion() {
               <Ionicons name="location" size={38} color="#6347D1" />
             </Marker>
 
-            {/* Marcador Fin del Tramo */}
             {esTramo && puntoB && (
               <Marker
                 coordinate={puntoB}
@@ -299,7 +322,6 @@ export default function PasoUbicacion() {
         )}
       </View>
 
-      {/* Botones de Control de Modo */}
       <View style={styles.actionRow}>
         <TouchableOpacity
           style={[styles.modeBtn, !esTramo && styles.modeBtnActive]}
@@ -324,7 +346,6 @@ export default function PasoUbicacion() {
         </TouchableOpacity>
       </View>
 
-      {/* Tarjeta de Resumen Visual */}
       <View style={styles.summaryCard}>
         <View style={styles.headerCardRow}>
           <Text style={styles.cardTitle}>Dirección detectada</Text>
@@ -396,6 +417,7 @@ const styles = StyleSheet.create({
     marginBottom: 15,
     borderWidth: 1,
     borderColor: "#EAEAEA",
+    zIndex: 1,
   },
   map: {
     flex: 1,
