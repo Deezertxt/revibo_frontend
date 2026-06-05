@@ -1,13 +1,13 @@
 import { Ionicons } from "@expo/vector-icons";
 import React, { useEffect, useState } from "react";
 import {
-  Modal,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
+    Modal,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
 } from "react-native";
 import { Calendar, LocaleConfig } from "react-native-calendars";
 import { Selector } from "../componentes/Selectores";
@@ -62,7 +62,7 @@ const TIPOS_OPTIONS = [
     value: "accidente_vehicular",
     icon: "alert-circle-outline",
   },
-  { label: "Bloqueo", value: "bloqueo", icon: "list-outline" },
+  { label: "Bloqueo", value: "bloqueo", icon: "ban-outline" },
   { label: "Mantenimiento", value: "mantenimiento", icon: "build-outline" },
   {
     label: "Cierre prog.",

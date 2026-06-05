@@ -1,8 +1,10 @@
+import Ionicons from '@expo/vector-icons/Ionicons';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { Image } from 'expo-image';
 import * as Location from 'expo-location';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { RefObject } from 'react';
+import { Fragment, memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Pressable,
@@ -34,6 +36,7 @@ import { useAlertsStore } from '@/shared/store/alertsStore';
 
 const PRIMARY = '#5B3FD9';
 const LOCATION_FAB_BOTTOM_OFFSET = 8;
+const DEFAULT_SEVERITIES: Incident['severity'][] = [];
 
 const DEFAULT_REGION: Region = {
   latitude: -17.3935,
@@ -43,6 +46,179 @@ const DEFAULT_REGION: Region = {
 };
 
 type IncidentFilter = 'todos' | IncidentType;
+
+type IncidentMarkerConfig = {
+  icon: keyof typeof Ionicons.glyphMap;
+  label: string;
+};
+
+type IncidentMapMarkerProps = {
+  incident: Incident;
+  onPress: (incident: Incident) => void;
+};
+
+const INCIDENT_MARKER_CONFIG: Record<IncidentType, IncidentMarkerConfig> = {
+  accidente_vehicular: { icon: 'alert-circle-outline', label: 'Accidente vehicular' },
+  bloqueo: { icon: 'ban-outline', label: 'Bloqueo' },
+  mantenimiento: { icon: 'build-outline', label: 'Mantenimiento' },
+  cierre_programado: { icon: 'calendar-outline', label: 'Cierre programado' },
+  desfile: { icon: 'flag-outline', label: 'Desfile' },
+  festividad: { icon: 'wine-outline', label: 'Festividad' },
+  feria: { icon: 'storefront-outline', label: 'Feria' },
+  marcha: { icon: 'people-outline', label: 'Marcha' },
+  incendio: { icon: 'flame-outline', label: 'Incendio' },
+  derrumbe: { icon: 'alert-circle-outline', label: 'Derrumbe' },
+  deslizamiento: { icon: 'trending-down-outline', label: 'Deslizamiento' },
+  inundacion: { icon: 'water-outline', label: 'Inundacion' },
+};
+
+const IncidentMapMarker = memo(function IncidentMapMarker({ incident, onPress }: IncidentMapMarkerProps) {
+  const [tracksViewChanges, setTracksViewChanges] = useState(true);
+  const markerConfig = INCIDENT_MARKER_CONFIG[incident.type];
+  const markerColor = INCIDENT_TYPE_COLORS[incident.type];
+
+  useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      setTracksViewChanges(false);
+    }, 180);
+
+    return () => {
+      clearTimeout(timeoutId);
+    };
+  }, []);
+
+  return (
+    <Marker
+      coordinate={{ latitude: incident.latitude, longitude: incident.longitude }}
+      title={incident.title}
+      description={incident.description}
+      onPress={() => onPress(incident)}
+      tracksViewChanges={tracksViewChanges}
+    >
+      <View style={[styles.incidentMarkerWrap, { shadowColor: markerColor }]}>
+        <View style={[styles.incidentMarkerRing, { borderColor: markerColor }]}> 
+          <View style={[styles.incidentMarkerCircle, { backgroundColor: markerColor }]}>
+            <Ionicons name={markerConfig.icon} size={12} color="#FFFFFF" />
+          </View>
+        </View>
+        <View style={[styles.incidentMarkerDot, { backgroundColor: markerColor }]} />
+      </View>
+    </Marker>
+  );
+});
+
+const MemoFilterChip = memo(FilterChip);
+
+type MapCanvasProps = {
+  mapRef: RefObject<MapView | null>;
+  incidents: Incident[];
+  filteredIncidents: Incident[];
+  routePreview?: { name: string; distanceKm: number; coordinates: { latitude: number; longitude: number }[] };
+  openIncidentDetail: (incident: Incident) => void;
+};
+
+const MapCanvas = memo(function MapCanvas({
+  mapRef,
+  incidents,
+  filteredIncidents,
+  routePreview,
+  openIncidentDetail,
+}: MapCanvasProps) {
+  const restoredRegion = getSavedMapRegion();
+  const hasAppliedInitialFitRef = useRef(Boolean(restoredRegion));
+
+  useEffect(() => {
+    if (!incidents.length || hasAppliedInitialFitRef.current || !mapRef.current) {
+      return;
+    }
+
+    hasAppliedInitialFitRef.current = true;
+
+    mapRef.current.fitToCoordinates(
+      incidents.flatMap((incident) => incident.mapCoordinates),
+      {
+        edgePadding: {
+          top: 120,
+          right: 70,
+          bottom: 120,
+          left: 70,
+        },
+        animated: true,
+      }
+    );
+  }, [incidents]);
+
+  return (
+    <MapView
+      ref={mapRef}
+      initialRegion={restoredRegion ?? DEFAULT_REGION}
+      style={styles.map}
+      showsUserLocation
+      showsMyLocationButton={false}
+      followsUserLocation={false}
+      scrollEnabled
+      zoomEnabled
+      rotateEnabled
+      pitchEnabled
+      onRegionChangeComplete={(region) => setSavedMapRegion(region)}>
+      {routePreview?.coordinates.length ? (
+        <>
+          {routePreview.coordinates.length > 1 ? (
+            <Polyline
+              coordinates={routePreview.coordinates}
+              strokeColor={PRIMARY}
+              strokeWidth={5}
+            />
+          ) : null}
+
+          <Marker
+            coordinate={routePreview.coordinates[0]}
+            pinColor={PRIMARY}
+            title={routePreview.name}
+          />
+
+          {routePreview.coordinates.length > 1 ? (
+            <Marker
+              coordinate={routePreview.coordinates[routePreview.coordinates.length - 1]}
+              pinColor={PRIMARY}
+              title={`${routePreview.name} · destino`}
+            />
+          ) : null}
+        </>
+      ) : null}
+
+      {filteredIncidents.map((incident) => {
+        if (incident.geometryType === 'Point') {
+          return (
+            <IncidentMapMarker
+              key={incident.id}
+              incident={incident}
+              onPress={openIncidentDetail}
+            />
+          );
+        }
+
+        return (
+          <Fragment key={incident.id}>
+            <Polyline
+              key={`${incident.id}-line`}
+              coordinates={incident.mapCoordinates}
+              strokeColor={INCIDENT_TYPE_COLORS[incident.type]}
+              strokeWidth={5}
+              tappable
+              onPress={() => openIncidentDetail(incident)}
+            />
+            <IncidentMapMarker
+              key={`${incident.id}-center`}
+              incident={incident}
+              onPress={openIncidentDetail}
+            />
+          </Fragment>
+        );
+      })}
+    </MapView>
+  );
+});
 
 type SearchParams = {
   routeId?: string | string[];
@@ -59,13 +235,8 @@ export default function MapHomeScreen() {
   const [incidents, setIncidents] = useState<Incident[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedFilter, setSelectedFilter] = useState<IncidentFilter>('todos');
-  const [selectedSeverities, setSelectedSeverities] = useState<Incident['severity'][]>([
-    'Critico',
-    'Alto',
-    'Medio',
-    'Bajo',
-  ]);
-  const [tempSelectedSeverities, setTempSelectedSeverities] = useState<Incident['severity'][]>(selectedSeverities);
+  const [selectedSeverities, setSelectedSeverities] = useState<Incident['severity'][]>(DEFAULT_SEVERITIES);
+  const [tempSelectedSeverities, setTempSelectedSeverities] = useState<Incident['severity'][]>(DEFAULT_SEVERITIES);
   const [showFilterModal, setShowFilterModal] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [suggestions, setSuggestions] = useState<Array<any>>([]);
@@ -92,6 +263,16 @@ export default function MapHomeScreen() {
   const routePreview = useRoutesStore((state) =>
     routeId ? state.routes.find((route) => route.id === routeId) : undefined,
   );
+
+  const openFilterModal = () => {
+    setTempSelectedSeverities(selectedSeverities);
+    setShowFilterModal(true);
+  };
+
+  const handleClearFilters = () => {
+    setSelectedSeverities(DEFAULT_SEVERITIES);
+    setTempSelectedSeverities(DEFAULT_SEVERITIES);
+  };
 
   const clearRoutePreview = () => {
     useRoutesStore.setState({ selectedRouteId: null });
@@ -188,7 +369,7 @@ export default function MapHomeScreen() {
         latitudeDelta: 0.012,
         longitudeDelta: 0.012,
       },
-      450
+      320
     );
   }, []);
 
@@ -296,7 +477,9 @@ export default function MapHomeScreen() {
       selectedFilter === 'todos' ? incidents : incidents.filter((incident) => incident.type === selectedFilter);
 
     // filter by selected severities
-    list = list.filter((incident) => selectedSeverities.includes(incident.severity));
+    if (selectedSeverities.length > 0) {
+      list = list.filter((incident) => selectedSeverities.includes(incident.severity));
+    }
 
     return list;
   }, [incidents, selectedFilter, selectedSeverities]);
@@ -308,69 +491,6 @@ export default function MapHomeScreen() {
 
     return buildProgress(selectedIncident.startAt, selectedIncident.endAt);
   }, [selectedIncident]);
-
-  useEffect(() => {
-    if (!incidents.length || hasAppliedInitialFitRef.current || !mapRef.current) {
-      return;
-    }
-
-    hasAppliedInitialFitRef.current = true;
-
-    mapRef.current.fitToCoordinates(
-      incidents.flatMap((incident) => incident.mapCoordinates),
-      {
-        edgePadding: {
-          top: 120,
-          right: 70,
-          bottom: 120,
-          left: 70,
-        },
-        animated: true,
-      }
-    );
-  }, [incidents]);
-
-  useEffect(() => {
-    if (!mapRef.current) {
-      return;
-    }
-
-    setSelectedIncident(null);
-
-    if (filteredIncidents.length === 0) {
-      mapRef.current.animateToRegion(DEFAULT_REGION, 550);
-      return;
-    }
-
-    if (filteredIncidents.length === 1) {
-      const target = filteredIncidents[0];
-
-      mapRef.current.animateToRegion(
-        {
-          latitude: target.latitude,
-          longitude: target.longitude,
-          latitudeDelta: 0.02,
-          longitudeDelta: 0.02,
-        },
-        550
-      );
-
-      return;
-    }
-
-    mapRef.current.fitToCoordinates(
-      filteredIncidents.flatMap((incident) => incident.mapCoordinates),
-      {
-        edgePadding: {
-          top: 120,
-          right: 70,
-          bottom: 120,
-          left: 70,
-        },
-        animated: true,
-      }
-    );
-  }, [selectedFilter, filteredIncidents]);
 
   useEffect(() => {
     if (!mapRef.current || !routePreview || routePreview.coordinates.length === 0) {
@@ -502,7 +622,7 @@ export default function MapHomeScreen() {
             placeholderTextColor="#D6D0FF"
             style={styles.searchInput}
           />
-          <Pressable onPress={() => setShowFilterModal(true)} style={styles.filterButton}>
+          <Pressable onPress={openFilterModal} style={styles.filterButton}>
             <MaterialIcons name="filter-list" size={22} color="#FFFFFF" />
           </Pressable>
         </View>
@@ -511,14 +631,14 @@ export default function MapHomeScreen() {
           horizontal
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.filtersContent}>
-          <FilterChip
+          <MemoFilterChip
             label="Todos"
             count={incidents.length}
             active={selectedFilter === 'todos'}
             onPress={() => setSelectedFilter('todos')}
           />
           {INCIDENT_TYPES.map((type) => (
-            <FilterChip
+            <MemoFilterChip
               key={type}
               label={INCIDENT_TYPE_LABELS[type]}
               count={incidentCounts[type]}
@@ -553,13 +673,18 @@ export default function MapHomeScreen() {
 
 
       {showFilterModal ? (
-        <View style={styles.filterModalOverlay}>
-          <View style={styles.filterModal}>
+        <Pressable style={styles.filterModalOverlay} onPress={() => setShowFilterModal(false)}>
+          <View style={styles.filterModal} onStartShouldSetResponder={() => true}>
             <View style={styles.filterHeader}>
               <Text style={styles.filterTitle}>Filtrar incidentes</Text>
-              <Pressable onPress={() => { setTempSelectedSeverities(['Critico','Alto','Medio','Bajo']); }}>
-                <Text style={styles.clearText}>Limpiar</Text>
-              </Pressable>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <Pressable onPress={handleClearFilters}>
+                  <Text style={styles.clearText}>Limpiar</Text>
+                </Pressable>
+                <Pressable onPress={() => setShowFilterModal(false)}>
+                  <MaterialIcons name="close" size={20} color="#2F2B3A" />
+                </Pressable>
+              </View>
             </View>
 
             <Text style={styles.filterSectionTitle}>GRAVEDAD</Text>
@@ -590,83 +715,20 @@ export default function MapHomeScreen() {
               <Text style={styles.applyFiltersText}>Aplicar filtros</Text>
             </Pressable>
           </View>
-        </View>
+        </Pressable>
       ) : null}
 
-      <MapView
-        ref={mapRef}
-        initialRegion={restoredRegion ?? DEFAULT_REGION}
-        style={styles.map}
-        showsUserLocation
-        showsMyLocationButton={false}
-        followsUserLocation={false}
-        scrollEnabled
-        zoomEnabled
-        rotateEnabled
-        pitchEnabled
-        onRegionChangeComplete={(region) => setSavedMapRegion(region)}>
-        {routePreview?.coordinates.length ? (
-          <>
-            {routePreview.coordinates.length > 1 ? (
-              <Polyline
-                coordinates={routePreview.coordinates}
-                strokeColor={PRIMARY}
-                strokeWidth={5}
-              />
-            ) : null}
-
-            <Marker
-              coordinate={routePreview.coordinates[0]}
-              pinColor={PRIMARY}
-              title={routePreview.name}
-            />
-
-            {routePreview.coordinates.length > 1 ? (
-              <Marker
-                coordinate={routePreview.coordinates[routePreview.coordinates.length - 1]}
-                pinColor={PRIMARY}
-                title={`${routePreview.name} · destino`}
-              />
-            ) : null}
-          </>
-        ) : null}
-
-        {filteredIncidents.map((incident) => {
-          if (incident.geometryType === 'Point') {
-            return (
-              <Marker
-                key={incident.id}
-                coordinate={{ latitude: incident.latitude, longitude: incident.longitude }}
-                pinColor={INCIDENT_TYPE_COLORS[incident.type]}
-                title={incident.title}
-                description={incident.description}
-                onPress={() => openIncidentDetail(incident)}
-              />
-            );
-          }
-
-          return (
-            <Fragment key={incident.id}>
-              <Polyline
-                key={`${incident.id}-line`}
-                coordinates={incident.mapCoordinates}
-                strokeColor={INCIDENT_TYPE_COLORS[incident.type]}
-                strokeWidth={5}
-                tappable
-                onPress={() => openIncidentDetail(incident)}
-              />
-              <Marker
-                key={`${incident.id}-center`}
-                coordinate={{ latitude: incident.latitude, longitude: incident.longitude }}
-                pinColor={INCIDENT_TYPE_COLORS[incident.type]}
-                title={incident.title}
-                description={incident.description}
-                onPress={() => openIncidentDetail(incident)}
-              />
-            </Fragment>
-          );
-        })}
-      </MapView>
+      <MapCanvas
+        mapRef={mapRef}
+        incidents={incidents}
+        filteredIncidents={filteredIncidents}
+        routePreview={routePreview ? {
+          name: routePreview.name,
+          distanceKm: routePreview.distanceKm,
+          coordinates: routePreview.coordinates,
+        } : undefined}
+        openIncidentDetail={openIncidentDetail}
+      />
 
       {routePreview ? (
         <View style={[styles.routePreviewBanner, { top: insets.top + 112 }]}>
@@ -980,6 +1042,44 @@ const styles = StyleSheet.create({
   },
   filterChipLabelInactive: {
     color: '#F4F0FF',
+  },
+  incidentMarkerWrap: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingBottom: 3,
+    paddingTop: 0,
+    paddingHorizontal: 0,
+    shadowOpacity: 0.22,
+    shadowRadius: 4,
+    shadowOffset: {
+      width: 0,
+      height: 4,
+    },
+    elevation: 4,
+  },
+  incidentMarkerRing: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    borderWidth: 2,
+    backgroundColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  incidentMarkerCircle: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  incidentMarkerDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    marginTop: -2,
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
   },
   searchRow: {
     flexDirection: 'row',
