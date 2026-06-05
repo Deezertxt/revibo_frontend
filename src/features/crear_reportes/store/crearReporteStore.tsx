@@ -32,11 +32,13 @@ interface ReporteState {
   direccionTexto: string;
   url_imagen: string[];
 
-  // Acciones
   setStep: (step: number) => void;
   updateData: (
-    data: Partial<Omit<ReporteState, "setStep" | "updateData" | "reset">>,
+    data: Partial<
+      Omit<ReporteState, "setStep" | "updateData" | "reset" | "limpiarStore">
+    >,
   ) => void;
+  limpiarStore: () => void;
   reset: () => void;
 }
 
@@ -59,6 +61,8 @@ export const useCrearReporteStore = create<ReporteState>((set) => ({
   setStep: (step) => set({ step }),
 
   updateData: (data) => set((state) => ({ ...state, ...data })),
+
+  limpiarStore: () => set({ ...initialState }),
 
   reset: () => set({ ...initialState }),
 }));

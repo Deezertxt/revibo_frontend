@@ -1,6 +1,8 @@
 import { Ionicons } from "@expo/vector-icons";
+import { useRouter } from "expo-router";
 import React, { useEffect } from "react";
 import {
+  Alert,
   BackHandler,
   StatusBar,
   StyleSheet,
@@ -17,22 +19,39 @@ import PasoUbicacion from "./Screens/PasoUbicación";
 import { useEditarReporteStore } from "./store/editarReporteStore";
 
 export default function EditarReporteFeature() {
+  const router = useRouter();
   const step = useEditarReporteStore((state) => state.step ?? 0);
   const setStep = useEditarReporteStore((state) => state.setStep);
   const reporteSeleccionado = useEditarReporteStore(
     (state) => state.reporteSeleccionado,
   );
-  const limpiarReporteSeleccionado = useEditarReporteStore(
-    (state) => state.limpiarReporteSeleccionado,
-  );
+  const reset = useEditarReporteStore((state) => state.reset);
 
   const titles = ["Información", "Ubicación", "Resumen"];
+
+  const confirmarSalida = () => {
+    Alert.alert(
+      "¿Descartar cambios?",
+      "Si sales ahora, perderás las modificaciones realizadas en este reporte.",
+      [
+        { text: "Continuar editando", style: "cancel" },
+        {
+          text: "Descartar",
+          style: "destructive",
+          onPress: () => {
+            reset();
+            router.push("/(tabs)/reportes_menu");
+          },
+        },
+      ],
+    );
+  };
 
   const handleBack = () => {
     if (step > 0) {
       setStep(step - 1);
     } else {
-      limpiarReporteSeleccionado();
+      confirmarSalida();
     }
   };
 
@@ -40,10 +59,11 @@ export default function EditarReporteFeature() {
     const backAction = () => {
       if (step > 0) {
         setStep(step - 1);
+        return true;
       } else {
-        limpiarReporteSeleccionado();
+        confirmarSalida();
+        return true;
       }
-      return true;
     };
 
     const backHandler = BackHandler.addEventListener(
@@ -74,17 +94,13 @@ export default function EditarReporteFeature() {
 
       <View style={styles.header}>
         <View style={styles.topRow}>
-          {step > 0 && (
-            <TouchableOpacity onPress={handleBack} style={styles.backButton}>
-              <Ionicons name="arrow-back" size={24} color="white" />
-            </TouchableOpacity>
-          )}
+          <TouchableOpacity onPress={handleBack} style={styles.backButton}>
+            <Ionicons name="arrow-back" size={24} color="white" />
+          </TouchableOpacity>
           <Text style={styles.headerTitle}>Editar reporte</Text>
         </View>
 
-        <Text
-          style={[styles.headerSubtitle, { marginLeft: step > 0 ? 36 : 0 }]}
-        >
+        <Text style={[styles.headerSubtitle, { marginLeft: 36 }]}>
           {titles[step]}
         </Text>
 

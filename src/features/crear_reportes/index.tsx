@@ -20,13 +20,21 @@ export default function CrearReporteFeature() {
   const router = useRouter();
   const step = useCrearReporteStore((state) => state.step);
   const setStep = useCrearReporteStore((state) => state.setStep);
+
+  const limpiarStore = useCrearReporteStore((state) => state.limpiarStore);
+
   const titles = ["Información", "Ubicación", "Resumen"];
+
+  const salirAlMenu = () => {
+    limpiarStore();
+    router.push("/(tabs)/reportes_menu");
+  };
 
   const handleBack = () => {
     if (step > 0) {
       setStep(step - 1);
     } else {
-      router.push("/(tabs)/reportes_menu");
+      salirAlMenu();
     }
   };
 
@@ -36,7 +44,7 @@ export default function CrearReporteFeature() {
         setStep(step - 1);
         return true;
       } else {
-        router.push("/(tabs)/reportes_menu");
+        salirAlMenu();
         return true;
       }
     };
