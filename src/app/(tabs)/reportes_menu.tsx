@@ -22,8 +22,8 @@ export default function AdminReportesScreen() {
       <View style={styles.menuWrapper}>
         {/* Encabezado del Panel */}
         <View style={styles.headerContainer}>
-          <Text style={styles.subtitle}>PANEL DE CONTROL</Text>
-          <Text style={styles.title}>¿Qué deseas hacer hoy?</Text>
+          <Text style={styles.title}>PANEL DE CONTROL</Text>
+          <Text style={styles.subtitle}>Gestiona los</Text>
         </View>
 
         {/* Contenedor de la Fila de Botones */}
@@ -44,9 +44,9 @@ export default function AdminReportesScreen() {
             <Text style={styles.buttonText}>Crear{"\n"}Reporte</Text>
           </TouchableOpacity>
 
-          {/* 2. BOTÓN: EDITAR REPORTE 
-          <TouchableOpacity 
-            style={styles.squareButton} 
+          {/* 2. BOTÓN: EDITAR REPORTE */}
+          <TouchableOpacity
+            style={styles.squareButton}
             onPress={() => router.push("/(tabs)/editar_reporte")}
             activeOpacity={0.8}
           >
@@ -54,7 +54,7 @@ export default function AdminReportesScreen() {
               <MaterialIcons name="edit" size={26} color="#FFFFFF" />
             </View>
             <Text style={styles.buttonText}>Editar{"\n"}Reporte</Text>
-          </TouchableOpacity>*/}
+          </TouchableOpacity>
 
           {/* 3. BOTÓN: ELIMINAR REPORTE 
           <TouchableOpacity 

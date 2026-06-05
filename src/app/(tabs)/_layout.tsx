@@ -115,6 +115,7 @@ export default function TabLayout() {
 
       <Tabs.Screen name="explore" options={{ href: null }} />
       <Tabs.Screen name="crear_reportes" options={{ href: null }} />
+      <Tabs.Screen name="editar_reporte" options={{ href: null }} />
     </Tabs>
   );
 }
