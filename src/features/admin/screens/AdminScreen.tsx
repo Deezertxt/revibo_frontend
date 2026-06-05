@@ -7,12 +7,11 @@ import {
   FlatList,
   Modal,
   Pressable,
-  SafeAreaView,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import RegisterAutoridadScreen from '@/features/auth/screens/RegisterAutoridadScreen';
 import { useAuthStore } from '@/shared/store/useAuthStore';
@@ -276,6 +275,7 @@ export default function AdminScreen() {
                     isDeleting={deleting === item.id_reporte}
                   />
                 )}
+                style={{ flex: 1 }}
                 contentContainerStyle={styles.listContent}
               />
             )}
@@ -302,26 +302,39 @@ export default function AdminScreen() {
               </View>
             ) : (
               <>
-                <Pressable
-                  onPress={() => setShowRegisterForm(true)}
-                  style={({ pressed }) => [
-                    styles.createButton,
-                    pressed && styles.createButtonPressed,
-                  ]}
-                >
-                  <MaterialIcons name="person-add" size={18} color="#fff" />
-                  <Text style={styles.createButtonText}>Nueva Autoridad</Text>
-                </Pressable>
-
                 {autoridades.length === 0 ? (
-                  <View style={styles.emptyContainer}>
-                    <MaterialIcons name="people-outline" size={40} color={PRIMARY} />
-                    <Text style={styles.emptyText}>No hay autoridades registradas</Text>
-                  </View>
+                  <>
+                    <Pressable
+                      onPress={() => setShowRegisterForm(true)}
+                      style={({ pressed }) => [
+                        styles.createButton,
+                        pressed && styles.createButtonPressed,
+                      ]}
+                    >
+                      <MaterialIcons name="person-add" size={18} color="#fff" />
+                      <Text style={styles.createButtonText}>Nueva Autoridad</Text>
+                    </Pressable>
+                    <View style={styles.emptyContainer}>
+                      <MaterialIcons name="people-outline" size={40} color={PRIMARY} />
+                      <Text style={styles.emptyText}>No hay autoridades registradas</Text>
+                    </View>
+                  </>
                 ) : (
                   <FlatList
                     data={autoridades}
                     keyExtractor={(item) => item.id_autoridad}
+                    ListHeaderComponent={
+                      <Pressable
+                        onPress={() => setShowRegisterForm(true)}
+                        style={({ pressed }) => [
+                          styles.createButton,
+                          pressed && styles.createButtonPressed,
+                        ]}
+                      >
+                        <MaterialIcons name="person-add" size={18} color="#fff" />
+                        <Text style={styles.createButtonText}>Nueva Autoridad</Text>
+                      </Pressable>
+                    }
                     renderItem={({ item }) => (
                       <AutoridadCard
                         autoridad={item}
@@ -331,6 +344,7 @@ export default function AdminScreen() {
                         isDeleting={deleting === item.id_autoridad}
                       />
                     )}
+                    style={{ flex: 1 }}
                     contentContainerStyle={styles.listContent}
                   />
                 )}
@@ -549,7 +563,7 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
     paddingHorizontal: 20,
-    paddingVertical: 12,
+    paddingVertical: 1,
   },
   loaderContainer: {
     flex: 1,
