@@ -1,8 +1,10 @@
 import { Ionicons } from "@expo/vector-icons";
+import { useRouter } from "expo-router";
 import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  BackHandler,
   FlatList,
   StyleSheet,
   Text,
@@ -18,10 +20,29 @@ import {
 } from "./services/resolverServices";
 
 export default function ResolverReporteScreen() {
+  const router = useRouter();
   const accessToken = useAuthStore((state) => state.accessToken);
   const [reportes, setReportes] = useState<any[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [actionLoading, setActionLoading] = useState<boolean>(false);
+
+  const handleBack = () => {
+    router.push("/(tabs)/reportes_menu");
+  };
+
+  useEffect(() => {
+    const backAction = () => {
+      handleBack();
+      return true;
+    };
+
+    const backHandler = BackHandler.addEventListener(
+      "hardwareBackPress",
+      backAction,
+    );
+
+    return () => backHandler.remove();
+  }, []);
 
   const cargarReportes = async () => {
     if (!accessToken) return;
@@ -119,7 +140,10 @@ export default function ResolverReporteScreen() {
   return (
     <View style={styles.container}>
       <View style={styles.headerContainer}>
-        <View>
+        <View style={styles.headerLeft}>
+          <TouchableOpacity onPress={handleBack} style={styles.backButton}>
+            <Ionicons name="arrow-back" size={24} color="#FFF" />
+          </TouchableOpacity>
           <Text style={styles.headerTitle}>Resolver Reporte</Text>
         </View>
         <TouchableOpacity
@@ -176,15 +200,23 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "center",
     paddingHorizontal: 20,
-    paddingTop: 24,
-    paddingBottom: 16,
+    paddingTop: 45,
+    paddingBottom: 20,
     backgroundColor: "#6347D1",
+  },
+  headerLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  backButton: {
+    padding: 4,
+    marginLeft: -4,
   },
   headerTitle: {
     fontSize: 26,
     fontWeight: "bold",
     color: "#FFF",
-    marginTop: 2,
   },
   screenSubtitle: {
     fontSize: 11,
@@ -215,6 +247,7 @@ const styles = StyleSheet.create({
   },
   listContent: {
     paddingHorizontal: 20,
+    paddingTop: 12,
     paddingBottom: 30,
   },
   emptyContainer: {

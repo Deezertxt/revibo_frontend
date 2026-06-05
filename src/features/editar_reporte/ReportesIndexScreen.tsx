@@ -1,7 +1,9 @@
 import { Ionicons } from "@expo/vector-icons";
+import { useRouter } from "expo-router";
 import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,
+  BackHandler,
   FlatList,
   RefreshControl,
   StatusBar,
@@ -19,11 +21,16 @@ import { useEditarReporteStore } from "./store/editarReporteStore";
 import EditarReporteFeature from "./index";
 
 export default function ReportesIndexScreen() {
+  const router = useRouter();
   const reporteSeleccionado = useEditarReporteStore(
     (state) => state.reporteSeleccionado,
   );
   const cargarReporteParaEditar = useEditarReporteStore(
     (state) => state.cargarReporteParaEditar,
+  );
+
+  const limpiarReporteSeleccionado = useEditarReporteStore(
+    (state) => state.limpiarReporteSeleccionado,
   );
 
   const accessToken = useAuthStore((state) => state.accessToken);
@@ -32,6 +39,32 @@ export default function ReportesIndexScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const handleBack = () => {
+    if (reporteSeleccionado) {
+      if (typeof limpiarReporteSeleccionado === "function") {
+        limpiarReporteSeleccionado();
+      } else {
+        cargarReporteParaEditar(null);
+      }
+    } else {
+      router.push("/(tabs)/reportes_menu");
+    }
+  };
+
+  useEffect(() => {
+    const backAction = () => {
+      handleBack();
+      return true;
+    };
+
+    const backHandler = BackHandler.addEventListener(
+      "hardwareBackPress",
+      backAction,
+    );
+
+    return () => backHandler.remove();
+  }, [reporteSeleccionado]);
 
   const cargarReportesDesdeApi = async (mostrarLoaderSilencioso = false) => {
     if (!accessToken) {
@@ -83,8 +116,11 @@ export default function ReportesIndexScreen() {
       ) : (
         <>
           <View style={styles.headerContainer}>
-            <View>
-              <Text style={styles.headerTitle}> Reportes</Text>
+            <View style={styles.headerLeft}>
+              <TouchableOpacity onPress={handleBack} style={styles.backButton}>
+                <Ionicons name="arrow-back" size={24} color="#FFF" />
+              </TouchableOpacity>
+              <Text style={styles.headerTitle}>Editar Reporte</Text>
             </View>
             <TouchableOpacity
               style={styles.syncButton}
@@ -161,17 +197,26 @@ export default function ReportesIndexScreen() {
 }
 
 const styles = StyleSheet.create({
-  mainContainer: { flex: 1, backgroundColor: "#5339B8" },
+  mainContainer: { flex: 1, backgroundColor: "#6347D1" },
   headerContainer: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
     paddingHorizontal: 20,
-    paddingTop: 30,
+    paddingTop: 45,
     paddingBottom: 20,
     backgroundColor: "#6347D1",
     borderBottomWidth: 1,
-    borderColor: "#5339B8",
+    borderColor: "#6347D1",
+  },
+  headerLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  backButton: {
+    padding: 4,
+    marginLeft: -4,
   },
   headerSubtitle: {
     fontSize: 12,
@@ -201,7 +246,7 @@ const styles = StyleSheet.create({
     color: "#FFF",
     fontWeight: "500",
   },
-  listContent: { padding: 16, paddingBottom: 30 },
+  listContent: { padding: 16, paddingTop: 12, paddingBottom: 30 },
   errorText: {
     fontSize: 15,
     color: "#FFD2D2",
