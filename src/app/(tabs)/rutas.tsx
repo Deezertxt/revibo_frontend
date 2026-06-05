@@ -3,16 +3,16 @@ import * as Location from 'expo-location';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ActivityIndicator,
-  Alert,
-  KeyboardAvoidingView,
-  Platform,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View
+    ActivityIndicator,
+    Alert,
+    KeyboardAvoidingView,
+    Platform,
+    Pressable,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TextInput,
+    View
 } from 'react-native';
 import MapView, { Marker, Polyline, Region } from 'react-native-maps';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -20,11 +20,11 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { buildRoutePreview } from '@/features/rutas/services/rutas.service';
 import { useRoutesStore } from '@/features/rutas/store/rutasStore';
 import {
-  ROUTE_STOP_COLORS,
-  formatRouteDistance,
-  type RouteCoordinate,
-  type RouteDraft,
-  type SavedRoute,
+    ROUTE_STOP_COLORS,
+    formatRouteDistance,
+    type RouteCoordinate,
+    type RouteDraft,
+    type SavedRoute,
 } from '@/features/rutas/types';
 import { useAuthStore } from '@/shared/store/useAuthStore';
 

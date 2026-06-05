@@ -1,4 +1,4 @@
-import type { RouteCoordinate, RouteDraft, RouteType } from '@/features/rutas/types';
+import type { RouteCoordinate, RouteDraft } from '@/features/rutas/types';
 
 function haversineDistanceKm(from: RouteCoordinate, to: RouteCoordinate): number {
   const earthRadiusKm = 6371;

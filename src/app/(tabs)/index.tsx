@@ -6,29 +6,29 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import type { RefObject } from 'react';
 import { Fragment, memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ActivityIndicator,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
+    ActivityIndicator,
+    Pressable,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TextInput,
+    View,
 } from 'react-native';
 import MapView, { Marker, Polyline, Region } from 'react-native-maps';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import {
-  ConnectivityError,
-  fetchActiveIncidents,
+    ConnectivityError,
+    fetchActiveIncidents,
 } from '@/features/incidents/incidents.service';
 import {
-  INCIDENT_SEVERITY_LABELS,
-  INCIDENT_STATUS_LABELS,
-  INCIDENT_TYPES,
-  INCIDENT_TYPE_COLORS,
-  INCIDENT_TYPE_LABELS,
-  Incident,
-  IncidentType,
+    INCIDENT_SEVERITY_LABELS,
+    INCIDENT_STATUS_LABELS,
+    INCIDENT_TYPES,
+    INCIDENT_TYPE_COLORS,
+    INCIDENT_TYPE_LABELS,
+    Incident,
+    IncidentType,
 } from '@/features/incidents/types';
 import { getSavedMapRegion, setSavedMapRegion } from '@/features/map/map-view-state';
 import { useRoutesStore } from '@/features/rutas/store/rutasStore';
@@ -113,6 +113,7 @@ type MapCanvasProps = {
   mapRef: RefObject<MapView | null>;
   incidents: Incident[];
   filteredIncidents: Incident[];
+  searchPreview?: SearchPreview | null;
   routePreview?: { name: string; distanceKm: number; coordinates: { latitude: number; longitude: number }[] };
   openIncidentDetail: (incident: Incident) => void;
 };
@@ -121,6 +122,7 @@ const MapCanvas = memo(function MapCanvas({
   mapRef,
   incidents,
   filteredIncidents,
+  searchPreview,
   routePreview,
   openIncidentDetail,
 }: MapCanvasProps) {
@@ -161,6 +163,21 @@ const MapCanvas = memo(function MapCanvas({
       rotateEnabled
       pitchEnabled
       onRegionChangeComplete={(region) => setSavedMapRegion(region)}>
+      {searchPreview?.coordinates.length ? (
+        <>
+          {searchPreview.coordinates.length > 1 ? (
+            <Polyline coordinates={searchPreview.coordinates} strokeColor={PRIMARY} strokeWidth={6} />
+          ) : null}
+
+          <Marker
+            coordinate={searchPreview.marker}
+            pinColor={PRIMARY}
+            title={searchPreview.title}
+            description={searchPreview.subtitle}
+          />
+        </>
+      ) : null}
+
       {routePreview?.coordinates.length ? (
         <>
           {routePreview.coordinates.length > 1 ? (
@@ -226,6 +243,61 @@ type SearchParams = {
   lng?: string;
 };
 
+type NominatimSuggestion = {
+  place_id?: number;
+  osm_id?: number;
+  lat: string;
+  lon: string;
+  display_name: string;
+  class?: string;
+  type?: string;
+  importance?: number;
+  geojson?: {
+    type?: string;
+    coordinates?: unknown;
+  } | null;
+  address?: {
+    road?: string;
+    pedestrian?: string;
+    cycleway?: string;
+    footway?: string;
+    junction?: string;
+    house_number?: string;
+    suburb?: string;
+    neighbourhood?: string;
+    city?: string;
+    town?: string;
+    municipality?: string;
+    county?: string;
+    department?: string;
+    state?: string;
+    region?: string;
+    country?: string;
+  };
+};
+
+type SearchSuggestion = {
+  id: string;
+  latitude: number;
+  longitude: number;
+  title: string;
+  subtitle: string;
+  raw: NominatimSuggestion;
+};
+
+type SearchPreview = {
+  title: string;
+  subtitle: string;
+  marker: { latitude: number; longitude: number };
+  coordinates: Array<{ latitude: number; longitude: number }>;
+  kind: 'point' | 'line';
+};
+
+type SearchArea = {
+  city?: string;
+  department?: string;
+};
+
 export default function MapHomeScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<SearchParams>();
@@ -239,11 +311,14 @@ export default function MapHomeScreen() {
   const [tempSelectedSeverities, setTempSelectedSeverities] = useState<Incident['severity'][]>(DEFAULT_SEVERITIES);
   const [showFilterModal, setShowFilterModal] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [suggestions, setSuggestions] = useState<Array<any>>([]);
+  const [suggestions, setSuggestions] = useState<SearchSuggestion[]>([]);
   const [loadingSuggestions, setLoadingSuggestions] = useState(false);
   const [userCoordinate, setUserCoordinate] = useState<{ latitude: number; longitude: number } | null>(
     null
   );
+  const [userSearchArea, setUserSearchArea] = useState<SearchArea | null>(null);
+  const [searchErrorMessage, setSearchErrorMessage] = useState<string | null>(null);
+  const [selectedSearchPreview, setSelectedSearchPreview] = useState<SearchPreview | null>(null);
   const [infoMessage, setInfoMessage] = useState<string | null>(null);
   const [centeringUser, setCenteringUser] = useState(false);
   const [selectedIncident, setSelectedIncident] = useState<Incident | null>(null);
@@ -340,6 +415,9 @@ export default function MapHomeScreen() {
         };
 
         setUserCoordinate(coordinate);
+        void resolveSearchArea(coordinate.latitude, coordinate.longitude)
+          .then((area) => setUserSearchArea(area))
+          .catch(() => undefined);
       }
 
       mapRef.current.animateToRegion(
@@ -372,6 +450,56 @@ export default function MapHomeScreen() {
       320
     );
   }, []);
+
+  const handleSelectSuggestion = useCallback((suggestion: SearchSuggestion) => {
+    const geometryCoordinates = extractSuggestionCoordinates(suggestion.raw);
+    const preview: SearchPreview = {
+      title: suggestion.title,
+      subtitle: suggestion.subtitle,
+      marker: {
+        latitude: suggestion.latitude,
+        longitude: suggestion.longitude,
+      },
+      coordinates: geometryCoordinates.length > 0 ? geometryCoordinates : [{ latitude: suggestion.latitude, longitude: suggestion.longitude }],
+      kind: geometryCoordinates.length > 1 ? 'line' : 'point',
+    };
+
+    setSelectedSearchPreview(preview);
+
+    if (preview.kind === 'line' && preview.coordinates.length > 1) {
+      mapRef.current?.fitToCoordinates(preview.coordinates, {
+        edgePadding: {
+          top: 120,
+          right: 80,
+          bottom: 160,
+          left: 80,
+        },
+        animated: true,
+      });
+    } else {
+      mapRef.current?.animateCamera(
+        {
+          center: preview.marker,
+          zoom: 16.5,
+          heading: 0,
+          pitch: 0,
+        },
+        { duration: 450 },
+      );
+    }
+
+    setSearchQuery(suggestion.title);
+    setSuggestions([]);
+    setSearchErrorMessage(null);
+  }, []);
+
+  const handleSearchQueryChange = useCallback((value: string) => {
+    setSearchQuery(value);
+
+    if (selectedSearchPreview && value !== selectedSearchPreview.title) {
+      setSelectedSearchPreview(null);
+    }
+  }, [selectedSearchPreview]);
 
   useEffect(() => {
     let locationSubscription: Location.LocationSubscription | null = null;
@@ -410,6 +538,10 @@ export default function MapHomeScreen() {
             latitude: position.coords.latitude,
             longitude: position.coords.longitude,
           });
+
+          void resolveSearchArea(position.coords.latitude, position.coords.longitude)
+            .then((area) => setUserSearchArea(area))
+            .catch(() => undefined);
 
           syncAlertsFromIncidents(activeIncidents, {
             latitude: position.coords.latitude,
@@ -565,51 +697,148 @@ export default function MapHomeScreen() {
     if (!searchQuery || searchQuery.trim().length === 0) {
       setSuggestions([]);
       setLoadingSuggestions(false);
+      setSearchErrorMessage(null);
       return;
     }
 
     let cancelled = false;
     const controller = new AbortController();
 
+    const buildSearchUrl = (mode: 'nearby' | 'city' | 'department' | 'fallback') => {
+      const params = new URLSearchParams({
+        format: 'jsonv2',
+        q: searchQuery,
+        addressdetails: '1',
+        limit: '10',
+        countrycodes: 'bo',
+        'accept-language': 'es',
+        polygon_geojson: '1',
+      });
+
+      if (mode === 'nearby' && userCoordinate) {
+        const latitudeSpan = 0.55;
+        const longitudeSpan = 0.7;
+        const left = userCoordinate.longitude - longitudeSpan;
+        const right = userCoordinate.longitude + longitudeSpan;
+        const top = userCoordinate.latitude + latitudeSpan;
+        const bottom = userCoordinate.latitude - latitudeSpan;
+
+        params.set('viewbox', `${left},${top},${right},${bottom}`);
+        params.set('bounded', '1');
+      }
+
+      if (mode === 'city' && userSearchArea?.city) {
+        params.set('city', userSearchArea.city);
+      }
+
+      if (mode === 'department' && userSearchArea?.department) {
+        params.set('state', userSearchArea.department);
+      }
+
+      return `https://nominatim.openstreetmap.org/search?${params.toString()}`;
+    };
+
+    const mergeUniqueSuggestions = (current: NominatimSuggestion[], next: NominatimSuggestion[]) => {
+      const seen = new Set(current.map((item) => `${item.place_id ?? item.osm_id ?? `${item.lat}-${item.lon}`}`));
+
+      return [
+        ...current,
+        ...next.filter((item) => {
+          const key = `${item.place_id ?? item.osm_id ?? `${item.lat}-${item.lon}`}`;
+          if (seen.has(key)) {
+            return false;
+          }
+
+          seen.add(key);
+          return true;
+        }),
+      ];
+    };
+
+    const toSuggestion = (item: NominatimSuggestion): SearchSuggestion => {
+      const latitude = Number(item.lat);
+      const longitude = Number(item.lon);
+      const formatted = formatNominatimSuggestion(item);
+
+      return {
+        id: `${item.place_id ?? item.osm_id ?? `${item.lat}-${item.lon}`}`,
+        latitude,
+        longitude,
+        title: formatted.title,
+        subtitle: formatted.subtitle,
+        raw: item,
+      };
+    };
+
     const timer = setTimeout(async () => {
       try {
         setLoadingSuggestions(true);
-        const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(
-          searchQuery
-        )}&addressdetails=1&limit=6`;
+        setSearchErrorMessage(null);
 
-        const res = await fetch(url, {
-          signal: controller.signal,
-          headers: {
-            'Accept-Language': 'es',
-            'User-Agent': 'Revibo/1.0',
-          },
-        });
+        const fetchSuggestions = async (mode: 'nearby' | 'city' | 'department' | 'fallback') => {
+          const res = await fetch(buildSearchUrl(mode), {
+            signal: controller.signal,
+            headers: {
+              Accept: 'application/json',
+              'Accept-Language': 'es',
+              'User-Agent': 'Revibo/1.0',
+            },
+          });
+
+          if (!res.ok) {
+            return [] as NominatimSuggestion[];
+          }
+
+          const data = (await res.json().catch(() => [])) as NominatimSuggestion[];
+          return normalizeNominatimPayload(data);
+        };
+
+        const collectedResults: NominatimSuggestion[] = [];
+
+        if (userCoordinate) {
+          const nearbyResults = await fetchSuggestions('nearby');
+          collectedResults.push(...nearbyResults);
+        }
+
+        if (collectedResults.length < 10 && userSearchArea?.city) {
+          const cityResults = await fetchSuggestions('city');
+          collectedResults.splice(0, collectedResults.length, ...mergeUniqueSuggestions(collectedResults, cityResults));
+        }
+
+        if (collectedResults.length < 10 && userSearchArea?.department) {
+          const departmentResults = await fetchSuggestions('department');
+          collectedResults.splice(0, collectedResults.length, ...mergeUniqueSuggestions(collectedResults, departmentResults));
+        }
+
+        if (collectedResults.length < 10) {
+          const BoliviaResults = await fetchSuggestions('fallback');
+          collectedResults.splice(0, collectedResults.length, ...mergeUniqueSuggestions(collectedResults, BoliviaResults));
+        }
 
         if (cancelled) return;
 
-        if (!res.ok) {
-          setSuggestions([]);
-          setLoadingSuggestions(false);
-          return;
+        const rankedSuggestions = rankNominatimSuggestions(collectedResults, searchQuery, userCoordinate).slice(0, 10);
+
+        if (rankedSuggestions.length === 0) {
+          setSearchErrorMessage('No encontramos coincidencias en Bolivia.');
         }
 
-        const data = await res.json();
-        setSuggestions(Array.isArray(data) ? data : []);
+        setSuggestions(rankedSuggestions.map(toSuggestion));
       } catch (e) {
         if ((e as any)?.name === 'AbortError') return;
         setSuggestions([]);
+        setSearchErrorMessage('No se pudo buscar ubicaciones. Verifica tu conexión e intenta nuevamente.');
       } finally {
         if (!cancelled) setLoadingSuggestions(false);
       }
-    }, 350);
+    }, 300);
 
     return () => {
       cancelled = true;
       controller.abort();
       clearTimeout(timer);
     };
-  }, [searchQuery]);
+  }, [searchQuery, userCoordinate, userSearchArea]);
 
   return (
     <View style={styles.container}>
@@ -617,7 +846,7 @@ export default function MapHomeScreen() {
         <View style={styles.searchRow}>
           <TextInput
             value={searchQuery}
-            onChangeText={setSearchQuery}
+            onChangeText={handleSearchQueryChange}
             placeholder="Buscar calle, avenida o carretera"
             placeholderTextColor="#D6D0FF"
             style={styles.searchInput}
@@ -651,21 +880,34 @@ export default function MapHomeScreen() {
           <View style={styles.suggestionsBoxInline}>
             {loadingSuggestions ? (
               <View style={styles.suggestionRow}><ActivityIndicator size="small" color="#6F61DD" /></View>
+            ) : searchErrorMessage ? (
+              <View style={styles.emptySuggestionState}>
+                <Text style={styles.emptySuggestionTitle}>Sin resultados</Text>
+                <Text style={styles.emptySuggestionSubtitle}>{searchErrorMessage}</Text>
+              </View>
             ) : (
-              suggestions.map((s) => (
-                <Pressable
-                  key={s.place_id ?? s.osm_id ?? s.lat + s.lon}
-                  onPress={() => {
-                    const lat = parseFloat(s.lat);
-                    const lon = parseFloat(s.lon);
-                    mapRef.current?.animateToRegion({ latitude: lat, longitude: lon, latitudeDelta: 0.01, longitudeDelta: 0.01 }, 450);
-                    setSuggestions([]);
-                    setSearchQuery('');
-                  }}
-                  style={styles.suggestionRow}>
-                  <Text style={styles.suggestionText}>{s.display_name}</Text>
-                </Pressable>
-              ))
+              <>
+                {suggestions.map((s) => (
+                  <Pressable
+                    key={s.id}
+                    onPress={() => handleSelectSuggestion(s)}
+                    style={styles.suggestionRow}>
+                    <View style={styles.suggestionMainRow}>
+                      <Text style={styles.suggestionTitle} numberOfLines={1}>{s.title}</Text>
+                      <Text style={styles.suggestionType}>{formatSuggestionKind(s.raw)}</Text>
+                    </View>
+                    <Text style={styles.suggestionSubtitle} numberOfLines={2}>{s.subtitle}</Text>
+                  </Pressable>
+                ))}
+                {suggestions.length === 0 ? (
+                  <View style={styles.emptySuggestionState}>
+                    <Text style={styles.emptySuggestionTitle}>Escribe para buscar</Text>
+                    <Text style={styles.emptySuggestionSubtitle}>
+                      Buscamos calles, avenidas, carreteras, barrios e intersecciones en Bolivia.
+                    </Text>
+                  </View>
+                ) : null}
+              </>
             )}
           </View>
         ) : null}
@@ -722,6 +964,7 @@ export default function MapHomeScreen() {
         mapRef={mapRef}
         incidents={incidents}
         filteredIncidents={filteredIncidents}
+        searchPreview={selectedSearchPreview}
         routePreview={routePreview ? {
           name: routePreview.name,
           distanceKm: routePreview.distanceKm,
@@ -934,6 +1177,294 @@ function firstParam(value: string | string[] | undefined): string | undefined {
   return value;
 }
 
+function normalizeSearchText(value: string): string {
+  return value
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+}
+
+function normalizeNominatimPayload(payload: unknown): NominatimSuggestion[] {
+  if (!Array.isArray(payload)) {
+    return [];
+  }
+
+  return payload.filter((item): item is NominatimSuggestion => {
+    if (!item || typeof item !== 'object') {
+      return false;
+    }
+
+    const candidate = item as Partial<NominatimSuggestion>;
+    return (
+      typeof candidate.lat === 'string' &&
+      typeof candidate.lon === 'string' &&
+      typeof candidate.display_name === 'string'
+    );
+  });
+}
+
+async function resolveSearchArea(latitude: number, longitude: number): Promise<SearchArea | null> {
+  try {
+    const response = await fetch(
+      `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${latitude}&lon=${longitude}&addressdetails=1&accept-language=es`,
+      {
+        headers: {
+          Accept: 'application/json',
+          'Accept-Language': 'es',
+          'User-Agent': 'Revibo/1.0',
+        },
+      },
+    );
+
+    const payload = await response.json().catch(() => null);
+    const address = payload?.address ?? {};
+
+    if (!response.ok || !payload || typeof payload !== 'object') {
+      return null;
+    }
+
+    const city = address.city || address.town || address.municipality || address.county || address.suburb;
+    const department = address.state || address.region || address.county;
+
+    return city || department
+      ? {
+          city,
+          department,
+        }
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function extractSuggestionCoordinates(suggestion: NominatimSuggestion): Array<{ latitude: number; longitude: number }> {
+  const geojson = suggestion.geojson;
+
+  if (!geojson || !geojson.type || geojson.coordinates == null) {
+    return [];
+  }
+
+  const toPoint = (pair: unknown): { latitude: number; longitude: number } | null => {
+    if (!Array.isArray(pair) || pair.length < 2) {
+      return null;
+    }
+
+    const longitude = Number(pair[0]);
+    const latitude = Number(pair[1]);
+
+    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+      return null;
+    }
+
+    return { latitude, longitude };
+  };
+
+  const extractLine = (line: unknown): Array<{ latitude: number; longitude: number }> => {
+    if (!Array.isArray(line)) {
+      return [];
+    }
+
+    return line.map(toPoint).filter((point): point is { latitude: number; longitude: number } => point !== null);
+  };
+
+  if (geojson.type === 'Point') {
+    const point = toPoint(geojson.coordinates);
+    return point ? [point] : [];
+  }
+
+  if (geojson.type === 'LineString') {
+    return extractLine(geojson.coordinates);
+  }
+
+  if (geojson.type === 'MultiLineString' && Array.isArray(geojson.coordinates) && geojson.coordinates.length > 0) {
+    return extractLine(geojson.coordinates[0]);
+  }
+
+  if (geojson.type === 'Polygon' && Array.isArray(geojson.coordinates) && geojson.coordinates.length > 0) {
+    return extractLine(geojson.coordinates[0]);
+  }
+
+  if (geojson.type === 'MultiPolygon' && Array.isArray(geojson.coordinates) && geojson.coordinates.length > 0) {
+    const firstPolygon = geojson.coordinates[0];
+    if (Array.isArray(firstPolygon) && firstPolygon.length > 0) {
+      return extractLine(firstPolygon[0]);
+    }
+  }
+
+  return [];
+}
+
+function formatFallbackLocation(displayName: string): string {
+  const parts = displayName.split(',').map((part) => part.trim()).filter(Boolean);
+
+  if (parts.length === 0) {
+    return 'Bolivia';
+  }
+
+  if (parts.length === 1) {
+    return `${parts[0]}, Bolivia`;
+  }
+
+  return `${parts.slice(1, 3).join(' · ')}, Bolivia`;
+}
+
+function formatRoadName(address: NonNullable<NominatimSuggestion['address']>): string | null {
+  const road = address.road || address.pedestrian || address.cycleway || address.footway;
+  if (!road) {
+    return address.junction ? `Intersección ${address.junction}` : null;
+  }
+
+  if (address.house_number) {
+    return `${road} ${address.house_number}`;
+  }
+
+  return road;
+}
+
+function formatNominatimSuggestion(suggestion: NominatimSuggestion): { title: string; subtitle: string } {
+  const address = suggestion.address ?? {};
+  const roadLabel = formatRoadName(address);
+  const locality = [
+    address.suburb,
+    address.neighbourhood,
+    address.city,
+    address.town,
+    address.municipality,
+    address.county,
+    address.department,
+    address.state,
+  ].filter((part): part is string => Boolean(part));
+
+  if (roadLabel) {
+    return {
+      title: roadLabel,
+      subtitle: locality.join(' · ') || formatFallbackLocation(suggestion.display_name),
+    };
+  }
+
+  if (suggestion.type === 'junction' || address.junction) {
+    const junctionLabel = address.junction ? `Intersección ${address.junction}` : 'Intersección';
+
+    return {
+      title: junctionLabel,
+      subtitle: locality.join(' · ') || formatFallbackLocation(suggestion.display_name),
+    };
+  }
+
+  if (suggestion.class === 'highway') {
+    return {
+      title: suggestion.display_name.split(',')[0] || suggestion.display_name,
+      subtitle: locality.join(' · ') || formatFallbackLocation(suggestion.display_name),
+    };
+  }
+
+  return {
+    title: suggestion.display_name.split(',')[0] || suggestion.display_name,
+    subtitle: locality.join(' · ') || formatFallbackLocation(suggestion.display_name),
+  };
+}
+
+function formatSuggestionKind(suggestion: NominatimSuggestion): string {
+  const address = suggestion.address ?? {};
+  const road = address.road || address.pedestrian || address.cycleway || address.footway;
+  const normalizedType = normalizeSearchText(suggestion.type ?? '');
+
+  if (address.junction || suggestion.type === 'junction') {
+    return 'Intersección';
+  }
+
+  if (road) {
+    const normalizedRoad = normalizeSearchText(road);
+
+    if (
+      normalizedType.includes('motorway') ||
+      normalizedType.includes('trunk') ||
+      normalizedRoad.includes('autopista')
+    ) {
+      return 'Autopista';
+    }
+
+    if (
+      normalizedType.includes('primary') ||
+      normalizedType.includes('secondary') ||
+      normalizedType.includes('tertiary') ||
+      normalizedType.includes('road') ||
+      normalizedRoad.includes('carretera')
+    ) {
+      return 'Carretera';
+    }
+
+    if (normalizedRoad.includes('avenida') || normalizedRoad.includes('av.')) {
+      return 'Avenida';
+    }
+
+    return 'Calle';
+  }
+
+  if (suggestion.class === 'highway') {
+    return 'Carretera';
+  }
+
+  return 'Ubicación';
+}
+
+function rankNominatimSuggestions(
+  suggestions: NominatimSuggestion[],
+  query: string,
+  userCoordinate: { latitude: number; longitude: number } | null,
+): NominatimSuggestion[] {
+  const normalizedQuery = normalizeSearchText(query);
+
+  const scoreSuggestion = (suggestion: NominatimSuggestion): number => {
+    const address = suggestion.address ?? {};
+    const display = normalizeSearchText(suggestion.display_name);
+    const road = normalizeSearchText(address.road || address.pedestrian || address.cycleway || address.footway || '');
+    const junction = normalizeSearchText(address.junction || '');
+    const city = normalizeSearchText(address.city || address.town || address.municipality || address.department || address.state || '');
+
+    let score = 0;
+
+    if (display.includes(normalizedQuery)) score += 120;
+    if (road.includes(normalizedQuery)) score += 150;
+    if (junction.includes(normalizedQuery)) score += 140;
+    if (city.includes(normalizedQuery)) score += 40;
+
+    if (suggestion.class === 'highway') score += 30;
+    if (suggestion.type === 'junction') score += 60;
+
+    if (userCoordinate) {
+      const lat = Number(suggestion.lat);
+      const lon = Number(suggestion.lon);
+      const distance = Number.isFinite(lat) && Number.isFinite(lon)
+        ? haversineDistanceKm(userCoordinate.latitude, userCoordinate.longitude, lat, lon)
+        : 9999;
+
+      score += Math.max(0, 180 - distance * 8);
+    }
+
+    score += Number.isFinite(suggestion.importance ?? NaN) ? (suggestion.importance ?? 0) * 18 : 0;
+
+    return score;
+  };
+
+  return [...suggestions].sort((a, b) => scoreSuggestion(b) - scoreSuggestion(a));
+}
+
+function haversineDistanceKm(latA: number, lonA: number, latB: number, lonB: number): number {
+  const earthRadiusKm = 6371;
+  const toRadians = (value: number) => (value * Math.PI) / 180;
+  const deltaLatitude = toRadians(latB - latA);
+  const deltaLongitude = toRadians(lonB - lonA);
+  const latitude1 = toRadians(latA);
+  const latitude2 = toRadians(latB);
+
+  const a =
+    Math.sin(deltaLatitude / 2) ** 2 +
+    Math.sin(deltaLongitude / 2) ** 2 * Math.cos(latitude1) * Math.cos(latitude2);
+
+  return 2 * earthRadiusKm * Math.asin(Math.sqrt(a));
+}
+
 function StatusChip({ text }: { text: string }) {
   return (
     <View style={styles.statusChip}>
@@ -1129,12 +1660,46 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     borderBottomWidth: 1,
     borderBottomColor: '#F0EEF8',
+    gap: 4,
   },
-  suggestionText: {
+  suggestionMainRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+  suggestionTitle: {
     color: '#2F2B3A',
+    flex: 1,
+    fontSize: 14,
+    fontWeight: '800',
   },
-  filterModalOverlay: {
-    position: 'absolute',
+  suggestionType: {
+    color: '#6F61DD',
+    fontSize: 11,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  suggestionSubtitle: {
+    color: '#7D7891',
+    fontSize: 12,
+  emptySuggestionState: {
+    paddingHorizontal: 12,
+    paddingVertical: 14,
+    gap: 4,
+  },
+  emptySuggestionTitle: {
+    color: '#2F2B3A',
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  emptySuggestionSubtitle: {
+    color: '#7D7891',
+    fontSize: 12,
+    lineHeight: 17,
+    fontWeight: '600',
+  },
     top: 0,
     left: 0,
     right: 0,
@@ -1304,6 +1869,34 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     marginTop: 2,
   },
+  searchPreviewBanner: {
+    position: 'absolute',
+    left: 14,
+    right: 14,
+    borderRadius: 16,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    backgroundColor: 'rgba(17, 24, 39, 0.94)',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    shadowColor: '#000000',
+    shadowOpacity: 0.24,
+    shadowRadius: 10,
+    shadowOffset: {
+      width: 0,
+      height: 4,
+    },
+    elevation: 6,
+  },
+  searchPreviewBadge: {
+    width: 30,
+    height: 30,
+    borderRadius: 10,
+    backgroundColor: PRIMARY,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   routePreviewCloseButton: {
     width: 32,
     height: 32,
@@ -1469,30 +2062,14 @@ const styles = StyleSheet.create({
   progressTrack: {
     width: '100%',
     height: 5,
-    borderRadius: 6,
-    backgroundColor: '#E7E7EC',
+    borderRadius: 999,
+    backgroundColor: 'rgba(91, 63, 217, 0.12)',
     overflow: 'hidden',
   },
   progressFill: {
     height: '100%',
-    backgroundColor: '#E24A4A',
-  },
-  descriptionText: {
-    color: '#4C4958',
-    lineHeight: 22,
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  routeButton: {
-    borderRadius: 14,
+    borderRadius: 999,
     backgroundColor: PRIMARY,
-    minHeight: 52,
-    paddingHorizontal: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexDirection: 'row',
-    gap: 8,
-    marginTop: 4,
   },
   routeButtonDisabled: {
     opacity: 0.55,
