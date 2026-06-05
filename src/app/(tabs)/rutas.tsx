@@ -196,7 +196,7 @@ export default function RutasScreen() {
           </View>
           <View style={styles.createTextWrap}>
             <Text style={styles.createTitle}>Crear ruta personalizada</Text>
-            <Text style={styles.createSubtitle}>Definí origen, destino y paradas</Text>
+            <Text style={styles.createSubtitle}>Marcá el recorrido directamente en el mapa</Text>
           </View>
           <MaterialIcons name="chevron-right" size={24} color="#8A86A3" />
         </Pressable>
@@ -250,44 +250,86 @@ function RouteFormScreen({
   const insets = useSafeAreaInsets();
   const isEditMode = mode === 'edit';
   const [name, setName] = useState('');
-  const [stops, setStops] = useState<string[]>(['', '']);
-  const [externalOriginCoord, setExternalOriginCoord] = useState<RouteCoordinate | null>(null);
-  const [externalOriginLabel, setExternalOriginLabel] = useState<string | undefined>(undefined);
+  const [markerCoordinates, setMarkerCoordinates] = useState<RouteCoordinate[]>([
+    DEFAULT_MAP_COORDINATE,
+    offsetCoordinate(DEFAULT_MAP_COORDINATE, 1),
+  ]);
+  const [routePreviewCoordinates, setRoutePreviewCoordinates] = useState<RouteCoordinate[]>([]);
+  const [routeDistanceLabel, setRouteDistanceLabel] = useState<string | null>(null);
+  const [loadingPreview, setLoadingPreview] = useState(false);
   const [saving, setSaving] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   useEffect(() => {
     if (route) {
       setName(route.name);
-      setStops(
-        route.stops.length >= 2
-          ? route.stops
-          : [...route.stops, ...Array(2 - route.stops.length).fill('')],
+      setMarkerCoordinates(
+        route.markerCoordinates.length >= 2
+          ? route.markerCoordinates
+          : deriveMarkerCoordinates(route.coordinates),
       );
       return;
     }
 
     setName('');
-    setStops(['', '']);
+    setMarkerCoordinates([
+      DEFAULT_MAP_COORDINATE,
+      offsetCoordinate(DEFAULT_MAP_COORDINATE, 1),
+    ]);
   }, [route]);
 
-  const origin = stops[0] ?? '';
-  const destination = stops[stops.length - 1] ?? '';
-  const waypoints = stops.slice(1, -1);
+  useEffect(() => {
+    let cancelled = false;
 
-  const canSave =
-    name.trim().length > 0 &&
-    origin.trim().length > 0 &&
-    destination.trim().length > 0;
+    const timer = setTimeout(async () => {
+      if (markerCoordinates.length < 2) {
+        if (!cancelled) {
+          setRoutePreviewCoordinates(markerCoordinates);
+          setRouteDistanceLabel(null);
+          setLoadingPreview(false);
+        }
 
-  const updateStop = (index: number, value: string) => {
-    setStops((currentStops) =>
-      currentStops.map((stop, stopIndex) => (stopIndex === index ? value : stop)),
+        return;
+      }
+
+      setLoadingPreview(true);
+
+      const preview = await buildRoutePreview({
+        name: 'ruta temporal',
+        routeType: 'carretera_nueva',
+        markerCoordinates,
+      });
+
+      if (cancelled) {
+        return;
+      }
+
+      setRoutePreviewCoordinates(preview.coordinates);
+      setRouteDistanceLabel(
+        preview.coordinates.length >= 2 ? `${Math.round(preview.distanceKm)} km aprox.` : null,
+      );
+      setLoadingPreview(false);
+    }, 350);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [markerCoordinates]);
+
+  const canSave = name.trim().length > 0 && markerCoordinates.length >= 2;
+
+  const updateMarkerCoordinate = (index: number, value: RouteCoordinate) => {
+    setMarkerCoordinates((currentMarkers) =>
+      currentMarkers.map((coordinate, markerIndex) => (markerIndex === index ? value : coordinate)),
     );
   };
 
-  const updateOrigin = (value: string) => {
-    updateStop(0, value);
+  const addMarker = () => {
+    setMarkerCoordinates((currentMarkers) => {
+      const baseCoordinate = currentMarkers[currentMarkers.length - 1] ?? currentMarkers[0] ?? DEFAULT_MAP_COORDINATE;
+      return [...currentMarkers, offsetCoordinate(baseCoordinate, currentMarkers.length || 1)];
+    });
   };
 
   const useMyLocation = async () => {
@@ -299,43 +341,30 @@ function RouteFormScreen({
       }
 
       const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
-      const coord: RouteCoordinate = { latitude: pos.coords.latitude, longitude: pos.coords.longitude };
-      const label = await reverseGeocodeCoordinate(coord);
+      const coord: RouteCoordinate = {
+        latitude: pos.coords.latitude,
+        longitude: pos.coords.longitude,
+      };
 
-      if (label) {
-        updateOrigin(label);
-      }
+      setMarkerCoordinates((currentMarkers) => {
+        if (currentMarkers.length === 0) {
+          return [coord, offsetCoordinate(coord, 1)];
+        }
 
-      setExternalOriginLabel(label ?? undefined);
-      setExternalOriginCoord(coord);
+        return [coord, ...currentMarkers.slice(1)];
+      });
     } catch (err) {
       Alert.alert('No se pudo obtener ubicación', 'Intenta nuevamente.');
     }
   };
 
-  const updateWaypoint = (index: number, value: string) => {
-    updateStop(index + 1, value);
-  };
-
-  const updateDestination = (value: string) => {
-    updateStop(stops.length - 1, value);
-  };
-
-  const addStop = () => {
-    setStops((currentStops) => [
-      ...currentStops.slice(0, -1),
-      '',
-      currentStops[currentStops.length - 1] ?? '',
-    ]);
-  };
-
-  const removeStop = (index: number) => {
-    setStops((currentStops) => currentStops.filter((_, stopIndex) => stopIndex !== index));
+  const removeMarker = (index: number) => {
+    setMarkerCoordinates((currentMarkers) => currentMarkers.filter((_, markerIndex) => markerIndex !== index));
   };
 
   const handleSave = async () => {
     if (!canSave) {
-      setErrorMessage('Completá el nombre, origen y destino.');
+      setErrorMessage('Completá el nombre y definí al menos dos marcadores.');
       return;
     }
 
@@ -346,7 +375,7 @@ function RouteFormScreen({
       await onSave({
         name,
         routeType: 'carretera_nueva',
-        stops: stops.map((stop) => stop.trim()).filter((stop) => stop.length > 0),
+        markerCoordinates: markerCoordinates.filter((coordinate): coordinate is RouteCoordinate => coordinate !== null),
       });
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : 'No se pudo guardar la ruta.');
@@ -354,8 +383,6 @@ function RouteFormScreen({
       setSaving(false);
     }
   };
-
-  const routeCoordinates = route?.coordinates ?? [];
 
   return (
     <KeyboardAvoidingView
@@ -391,75 +418,33 @@ function RouteFormScreen({
           <TextInput
             value={name}
             onChangeText={setName}
-            placeholder={isEditMode ? 'Cochabamba → Santa Cruz' : 'Ej: Ruta semanal al trabajo'}
+            placeholder={isEditMode ? 'Ruta principal del centro' : 'Ej: Ruta semanal al trabajo'}
             placeholderTextColor="#8F8F8F"
             style={styles.darkInput}
           />
 
           <RouteMapEditor
-            stops={stops}
-            routeCoordinates={routeCoordinates}
-            onStopChange={(index, value) => updateStop(index, value)}
-            externalOriginCoord={externalOriginCoord}
-            externalOriginLabel={externalOriginLabel}
+            markerCoordinates={markerCoordinates}
+            routePreviewCoordinates={routePreviewCoordinates}
+            routeDistanceLabel={routeDistanceLabel}
+            loadingPreview={loadingPreview}
+            onMarkerMove={updateMarkerCoordinate}
+            onAddMarker={addMarker}
+            onRemoveMarker={removeMarker}
+            onUseMyLocation={useMyLocation}
           />
 
-          <FieldLabel text="Origen" />
-          <RouteStopRow
-            index={0}
-            value={origin}
-            kind="origin"
-            onChange={updateOrigin}
-            placeholder="Ingresá el punto de partida"
-          />
+          <View style={styles.formFooterActions}>
+            <Pressable onPress={onBack} style={styles.secondaryFormButton}>
+              <Text style={styles.secondaryFormButtonText}>Cancelar</Text>
+            </Pressable>
 
-          <View style={{ alignItems: 'flex-end', marginTop: 8 }}>
-            <Pressable onPress={useMyLocation} style={styles.useLocationButton}>
-              <MaterialIcons name="my-location" size={16} color={PRIMARY} />
-              <Text style={styles.useLocationText}>Usar mi ubicación</Text>
+            <Pressable onPress={addMarker} style={styles.secondaryFormButton}>
+              <MaterialIcons name="add-location-alt" size={16} color={PRIMARY} />
+              <Text style={styles.secondaryFormButtonText}>Agregar marcador</Text>
             </Pressable>
           </View>
 
-          <View style={styles.waypointHeaderRow}>
-            <FieldLabel text="Paradas intermedias" />
-            <Pressable onPress={addStop} style={styles.addWaypointButton}>
-              <MaterialIcons name="flag" size={14} color="#5B3FD9" />
-              <Text style={styles.addWaypointButtonText}>Agregar banderita</Text>
-            </Pressable>
-          </View>
-
-          <View style={styles.stopsGroup}>
-            {waypoints.length === 0 ? (
-              <View style={styles.emptyWaypointsCard}>
-                <MaterialIcons name="flag" size={18} color="#5B3FD9" />
-                <Text style={styles.emptyWaypointsText}>Podés agregar una o más banderitas para marcar calles o desvíos.</Text>
-              </View>
-            ) : waypoints.map((stop, index) => (
-              <RouteStopRow
-                key={`stop-${index}`}
-                index={index + 1}
-                value={stop}
-                kind="waypoint"
-                onChange={(value) => updateWaypoint(index, value)}
-                onRemove={() => removeStop(index + 1)}
-                placeholder={getStopPlaceholder(index + 1, stops.length)}
-              />
-            ))}
-          </View>
-
-          <FieldLabel text="Destino" />
-          <RouteStopRow
-            index={stops.length - 1}
-            value={destination}
-            kind="destination"
-            onChange={updateDestination}
-            placeholder="Ingresá el destino final"
-          />
-
-          <Pressable onPress={addStop} style={styles.addStopButton}>
-            <MaterialIcons name="add-location-alt" size={18} color="#5B3FD9" />
-            <Text style={styles.addStopButtonText}>Agregar otra banderita</Text>
-          </Pressable>
           <Pressable
             onPress={handleSave}
             disabled={!canSave || saving}
@@ -484,7 +469,7 @@ function RouteFormScreen({
           <View style={{ marginTop: 8 }}>
             <Pressable onPress={useMyLocation} style={styles.useLocationButtonSecondary}>
               <MaterialIcons name="my-location" size={16} color={PRIMARY} />
-              <Text style={styles.useLocationTextSecondary}>Usar mi ubicación como origen</Text>
+              <Text style={styles.useLocationTextSecondary}>Usar mi ubicación como primer marcador</Text>
             </Pressable>
           </View>
         </View>
@@ -495,197 +480,48 @@ function RouteFormScreen({
 }
 
 function RouteMapEditor({
-  stops,
-  routeCoordinates,
-  onStopChange,
-  externalOriginCoord,
-  externalOriginLabel,
+  markerCoordinates,
+  routePreviewCoordinates,
+  routeDistanceLabel,
+  loadingPreview,
+  onMarkerMove,
+  onAddMarker,
+  onRemoveMarker,
+  onUseMyLocation,
 }: {
-  stops: string[];
-  routeCoordinates: RouteCoordinate[];
-  onStopChange: (index: number, value: string) => void;
-  externalOriginCoord?: RouteCoordinate | null;
-  externalOriginLabel?: string | undefined;
+  markerCoordinates: RouteCoordinate[];
+  routePreviewCoordinates: RouteCoordinate[];
+  routeDistanceLabel: string | null;
+  loadingPreview: boolean;
+  onMarkerMove: (index: number, value: RouteCoordinate) => void;
+  onAddMarker: () => void;
+  onRemoveMarker: (index: number) => void;
+  onUseMyLocation: () => void;
 }) {
   const mapRef = useRef<MapView | null>(null);
-  const [markerCoordinates, setMarkerCoordinates] = useState<Array<RouteCoordinate | null>>([]);
-  const markerCoordinatesRef = useRef<Array<RouteCoordinate | null>>([]);
-  const seededFromRouteRef = useRef(false);
-  const [loadingPreview, setLoadingPreview] = useState(false);
-  const [routePreviewCoordinates, setRoutePreviewCoordinates] = useState<RouteCoordinate[]>([]);
-  const [routeDistanceLabel, setRouteDistanceLabel] = useState<string | null>(null);
-  
-
   useEffect(() => {
-    markerCoordinatesRef.current = markerCoordinates;
-  }, [markerCoordinates]);
-
-  
-
-  useEffect(() => {
-    setMarkerCoordinates((current) => {
-      const next = [...current];
-      const baseCoordinate = next[0] ?? routeCoordinates[0] ?? DEFAULT_MAP_COORDINATE;
-
-      while (next.length < stops.length) {
-        const newIndex = next.length;
-
-        if (newIndex === 0) {
-          next.push(baseCoordinate ?? null);
-          continue;
-        }
-
-        const previousCoordinate = next[newIndex - 1] ?? baseCoordinate;
-        next.push(previousCoordinate ? offsetCoordinate(previousCoordinate, newIndex) : null);
-      }
-
-      if (next.length > stops.length) {
-        next.length = stops.length;
-      }
-
-      return next;
-    });
-  }, [routeCoordinates, stops.length]);
-
-  useEffect(() => {
-    if (routeCoordinates.length === stops.length && routeCoordinates.length > 0 && !seededFromRouteRef.current) {
-      setMarkerCoordinates(routeCoordinates);
-      seededFromRouteRef.current = true;
+    if (routePreviewCoordinates.length < 2) {
+      return;
     }
-  }, [routeCoordinates, stops.length]);
 
-  
-
-  useEffect(() => {
-    let cancelled = false;
-    const timer = setTimeout(async () => {
-      const trimmedStops = stops.map((stop) => stop.trim());
-
-      setLoadingPreview(true);
-
-      const resolved = await Promise.all(
-        trimmedStops.map(async (stop, index) => {
-          if (!stop) {
-            return markerCoordinatesRef.current[index] ?? null;
-          }
-
-          const coordinate = await geocodeStop(stop);
-          return coordinate ?? markerCoordinatesRef.current[index] ?? null;
-        }),
-      );
-
-      if (cancelled) {
-        return;
-      }
-
-      setMarkerCoordinates(resolved);
-      setLoadingPreview(false);
-
-      const validCoordinates = resolved.filter((coordinate): coordinate is RouteCoordinate => coordinate !== null);
-
-      if (validCoordinates.length >= 2) {
-        mapRef.current?.fitToCoordinates(validCoordinates, {
-          edgePadding: {
-            top: 80,
-            right: 60,
-            bottom: 80,
-            left: 60,
-          },
-          animated: true,
-        });
-      }
-
-      if (trimmedStops.some((s) => s.length > 0)) {
-        const preview = await buildRoutePreview({
-          name: 'ruta temporal',
-          routeType: 'carretera_nueva',
-          stops,
-        });
-
-        if (cancelled) {
-          return;
-        }
-
-        setRoutePreviewCoordinates(preview.coordinates);
-        setRouteDistanceLabel(
-          preview.coordinates.length >= 2 ? `${Math.round(preview.distanceKm)} km aprox.` : null,
-        );
-      } else {
-        // Use marker coordinates directly when user hasn't typed stops
-        const coords = validCoordinates;
-        setRoutePreviewCoordinates(coords);
-        setRouteDistanceLabel(coords.length >= 2 ? `${Math.round(computeDistanceKm(coords))} km aprox.` : null);
-      }
-    }, 450);
-
-    return () => {
-      cancelled = true;
-      clearTimeout(timer);
-    };
-  }, [stops]);
-
-  // react to external origin set from parent (use my location)
-  useEffect(() => {
-    if (!externalOriginCoord) return;
-
-    setMarkerCoordinates((current) => {
-      const next = [...current];
-      while (next.length < Math.max(stops.length, 1)) {
-        next.push(null);
-      }
-
-      next[0] = externalOriginCoord;
-      return next;
+    mapRef.current?.fitToCoordinates(routePreviewCoordinates, {
+      edgePadding: {
+        top: 80,
+        right: 60,
+        bottom: 80,
+        left: 60,
+      },
+      animated: true,
     });
+  }, [routePreviewCoordinates]);
 
-    if (externalOriginLabel) {
-      onStopChange(0, externalOriginLabel);
-    } else {
-      (async () => {
-        const label = await reverseGeocodeCoordinate(externalOriginCoord);
-        if (label) onStopChange(0, label);
-      })();
-    }
-  }, [externalOriginCoord, externalOriginLabel]);
-
-  // when markers move and user hasn't typed stops, update preview polyline
-  useEffect(() => {
-    const trimmed = stops.map((s) => s.trim());
-    if (trimmed.some((s) => s.length > 0)) return; // prefer textual preview
-
-    const visible = markerCoordinates.filter((c): c is RouteCoordinate => c !== null);
-    setRoutePreviewCoordinates(visible);
-    setRouteDistanceLabel(visible.length >= 2 ? `${Math.round(computeDistanceKm(visible))} km aprox.` : null);
-  }, [markerCoordinates]);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    markerCoordinates.forEach((coord, index) => {
-      if (!coord) return;
-      if ((stops[index] ?? '').trim().length > 0) return; // don't overwrite user input
-
-      (async () => {
-        const label = await reverseGeocodeCoordinate(coord);
-        if (cancelled) return;
-        if (label) {
-          onStopChange(index, label);
-        }
-      })();
-    });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [markerCoordinates, stops, onStopChange]);
-
-  const visibleCoordinates = markerCoordinates.filter((coordinate): coordinate is RouteCoordinate => coordinate !== null);
+  const visibleCoordinates = markerCoordinates;
   const mapLineCoordinates =
     routePreviewCoordinates.length > 1
       ? routePreviewCoordinates
       : visibleCoordinates.length > 0
         ? visibleCoordinates
-        : routeCoordinates;
+        : [DEFAULT_MAP_COORDINATE];
   const initialRegion = visibleCoordinates[0]
     ? {
         latitude: visibleCoordinates[0].latitude,
@@ -699,8 +535,8 @@ function RouteMapEditor({
     <View style={styles.mapEditorCard}>
       <View style={styles.mapEditorHeader}>
         <View>
-          <Text style={styles.mapEditorTitle}>Mapa de ruta</Text>
-          <Text style={styles.mapEditorSubtitle}>Arrastrá las banderitas para ajustar la ruta por calles específicas.</Text>
+          <Text style={styles.mapEditorTitle}>Mapa de marcadores</Text>
+          <Text style={styles.mapEditorSubtitle}>Mové los marcadores para definir origen, destino y paradas.</Text>
           {routeDistanceLabel ? <Text style={styles.mapEditorDistance}>{routeDistanceLabel}</Text> : null}
         </View>
         {loadingPreview ? <ActivityIndicator size="small" color={PRIMARY} /> : null}
@@ -723,10 +559,6 @@ function RouteMapEditor({
           ) : null}
 
           {markerCoordinates.map((coordinate, index) => {
-            if (!coordinate) {
-              return null;
-            }
-
             const kind =
               index === 0 ? 'origin' : index === markerCoordinates.length - 1 ? 'destination' : 'waypoint';
 
@@ -736,26 +568,42 @@ function RouteMapEditor({
                 coordinate={coordinate}
                 kind={kind}
                 index={index}
-                onDragEnd={async (nextCoordinate) => {
-                  setMarkerCoordinates((current) => {
-                    const updated = [...current];
-                    updated[index] = nextCoordinate;
-                    return updated;
-                  });
-
-                  const label = await reverseGeocodeCoordinate(nextCoordinate);
-                  if (label) {
-                    onStopChange(index, label);
-                  }
-                }}
+                onDragEnd={(nextCoordinate) => onMarkerMove(index, nextCoordinate)}
               />
             );
           })}
         </MapView>
       </View>
+
+      <View style={styles.markerToolsCard}>
+        <View style={styles.markerToolsHeader}>
+          <Text style={styles.markerToolsTitle}>Marcadores</Text>
+          <View style={styles.markerToolsActions}>
+            <Pressable onPress={onUseMyLocation} style={styles.markerActionButton}>
+              <MaterialIcons name="my-location" size={14} color={PRIMARY} />
+              <Text style={styles.markerActionButtonText}>Mi ubicación</Text>
+            </Pressable>
+            <Pressable onPress={onAddMarker} style={styles.markerActionButton}>
+              <MaterialIcons name="add-location-alt" size={14} color={PRIMARY} />
+              <Text style={styles.markerActionButtonText}>Agregar</Text>
+            </Pressable>
+          </View>
+        </View>
+
+        <View style={styles.markerChipsRow}>
+          {markerCoordinates.map((coordinate, index) => (
+            <View key={`marker-chip-${index}`} style={styles.markerChip}>
+              <Text style={styles.markerChipText}>Marcador {index + 1}</Text>
+              <Pressable onPress={() => onRemoveMarker(index)} style={styles.markerChipDelete}>
+                <MaterialIcons name="close" size={14} color="#A44B4B" />
+              </Pressable>
+            </View>
+          ))}
+        </View>
+      </View>
     </View>
   );
-  }
+}
 
 function RouteMapPin({
   coordinate,
@@ -808,6 +656,24 @@ function RouteMapPin({
   );
 }
 
+function deriveMarkerCoordinates(coordinates: RouteCoordinate[]): RouteCoordinate[] {
+  if (coordinates.length <= 2) {
+    return coordinates;
+  }
+
+  const middleIndex = Math.floor(coordinates.length / 2);
+  const selectedCoordinates = [coordinates[0], coordinates[middleIndex], coordinates[coordinates.length - 1]];
+
+  return selectedCoordinates.filter((coordinate, index, allCoordinates) => {
+    const firstIndex = allCoordinates.findIndex(
+      (candidate) =>
+        candidate.latitude === coordinate.latitude && candidate.longitude === coordinate.longitude,
+    );
+
+    return firstIndex === index;
+  });
+}
+
 function offsetCoordinate(base: RouteCoordinate, index: number): RouteCoordinate {
   const shift = 0.0025 * index;
 
@@ -817,78 +683,6 @@ function offsetCoordinate(base: RouteCoordinate, index: number): RouteCoordinate
   };
 }
 
-function computeDistanceKm(coords: RouteCoordinate[]) {
-  const toRad = (v: number) => (v * Math.PI) / 180;
-  let total = 0;
-
-  for (let i = 1; i < coords.length; i++) {
-    const a = coords[i - 1];
-    const b = coords[i];
-    const R = 6371; // km
-    const dLat = toRad(b.latitude - a.latitude);
-    const dLon = toRad(b.longitude - a.longitude);
-    const lat1 = toRad(a.latitude);
-    const lat2 = toRad(b.latitude);
-
-    const sinDLat = Math.sin(dLat / 2);
-    const sinDLon = Math.sin(dLon / 2);
-    const c = 2 * Math.atan2(Math.sqrt(sinDLat * sinDLat + Math.cos(lat1) * Math.cos(lat2) * sinDLon * sinDLon), Math.sqrt(1 - (sinDLat * sinDLat + Math.cos(lat1) * Math.cos(lat2) * sinDLon * sinDLon)));
-    total += R * c;
-  }
-
-  return total;
-}
-
-async function geocodeStop(stopLabel: string): Promise<RouteCoordinate | null> {
-  const response = await fetch(
-    `https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&q=${encodeURIComponent(stopLabel)}`,
-    {
-      headers: {
-        'User-Agent': 'ReviboApp/1.0',
-      },
-    },
-  );
-
-  const payload = (await response.json().catch(() => [])) as Array<{ lat: string; lon: string }>;
-
-  if (!response.ok || !Array.isArray(payload) || payload.length === 0) {
-    return null;
-  }
-
-  return {
-    latitude: Number(payload[0].lat),
-    longitude: Number(payload[0].lon),
-  };
-}
-
-async function reverseGeocodeCoordinate(coordinate: RouteCoordinate): Promise<string | null> {
-  const response = await fetch(
-    `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${coordinate.latitude}&lon=${coordinate.longitude}&zoom=18`,
-    {
-      headers: {
-        'User-Agent': 'ReviboApp/1.0',
-      },
-    },
-  );
-
-  const payload = await response.json().catch(() => null);
-
-  if (!response.ok || !payload) {
-    return null;
-  }
-
-  const address = payload.address ?? {};
-
-  return (
-    address.road ||
-    address.neighbourhood ||
-    address.suburb ||
-    address.city ||
-    address.town ||
-    payload.display_name ||
-    null
-  );
-}
 
 function RouteCard({
   route,
@@ -910,7 +704,7 @@ function RouteCard({
 
         <View style={styles.routeCardBody}>
           <Text style={styles.routeCardTitle}>{route.name}</Text>
-          <Text style={styles.routeCardMeta}>{route.stops.length} paradas · {formatRouteDistance(route.distanceKm)}</Text>
+          <Text style={styles.routeCardMeta}>{route.markerCoordinates.length} marcadores · {formatRouteDistance(route.distanceKm)}</Text>
         </View>
       </View>
 
@@ -994,84 +788,24 @@ function LoadingScreen({ topInset }: { topInset: number }) {
   );
 }
 
-function RouteStopRow({
-  index,
-  value,
-  kind,
-  onChange,
-  onRemove,
-  placeholder,
-}: {
-  index: number;
-  value: string;
-  kind: 'origin' | 'waypoint' | 'destination';
-  onChange: (value: string) => void;
-  onRemove?: () => void;
-  placeholder: string;
-}) {
-  const badgeLabel = kind === 'origin' ? 'A' : kind === 'destination' ? 'B' : String(index);
-  const badgeColor =
-    kind === 'origin'
-      ? ROUTE_STOP_COLORS.origin
-      : kind === 'destination'
-        ? ROUTE_STOP_COLORS.destination
-        : index === 1
-          ? ROUTE_STOP_COLORS.middle
-          : ROUTE_STOP_COLORS.extra;
-  const iconName = kind === 'origin' ? 'my-location' : 'flag';
-
-  return (
-    <View style={styles.stopRow}>
-      <View style={[styles.stopBadge, { backgroundColor: badgeColor }]}>
-        <MaterialIcons name={iconName} size={16} color="#FFFFFF" />
-      </View>
-
-      <View style={styles.stopInputWrap}>
-        <View style={styles.stopInputHeaderRow}>
-          <Text style={styles.stopBadgeText}>
-            {kind === 'origin' ? 'Origen' : kind === 'destination' ? 'Destino' : `Banderita ${badgeLabel}`}
-          </Text>
-          {kind === 'waypoint' ? <Text style={styles.stopHintText}>Parada opcional</Text> : null}
-        </View>
-
-        <TextInput
-          value={value}
-          onChangeText={onChange}
-          placeholder={placeholder}
-          placeholderTextColor="#8F8F8F"
-          style={styles.darkInput}
-          blurOnSubmit={false}
-          returnKeyType="next"
-        />
-      </View>
-
-      {onRemove ? (
-        <Pressable onPress={onRemove} style={styles.removeStopButton}>
-          <MaterialIcons name="close" size={16} color="#B45858" />
-        </Pressable>
-      ) : null}
-    </View>
-  );
-}
-
 function FieldLabel({ text }: { text: string }) {
   return <Text style={styles.fieldLabel}>{text}</Text>;
 }
 
-function getStopPlaceholder(index: number, totalStops: number): string {
+function markerColorForIndex(index: number, totalMarkers: number): string {
   if (index === 0) {
-    return 'Origen';
+    return ROUTE_STOP_COLORS.origin;
   }
 
-  if (index === totalStops - 1) {
-    return 'Destino';
+  if (index === totalMarkers - 1) {
+    return ROUTE_STOP_COLORS.destination;
   }
 
   if (index === 1) {
-    return 'Parada intermedia (opcional)';
+    return ROUTE_STOP_COLORS.middle;
   }
 
-  return 'Parada adicional';
+  return ROUTE_STOP_COLORS.extra;
 }
 
 function firstParam(value: string | string[] | undefined): string | undefined {
@@ -1441,6 +1175,27 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
   },
+  formFooterActions: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  secondaryFormButton: {
+    flex: 1,
+    minHeight: 42,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#D8D0F5',
+    backgroundColor: '#F7F4FF',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+  },
+  secondaryFormButtonText: {
+    color: PRIMARY,
+    fontSize: 13,
+    fontWeight: '800',
+  },
   mapEditorCard: {
     borderRadius: 16,
     borderWidth: 1,
@@ -1517,6 +1272,77 @@ const styles = StyleSheet.create({
     borderLeftColor: 'transparent',
     borderRightColor: 'transparent',
     marginTop: -1,
+  },
+  markerToolsCard: {
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#E4DCF7',
+    backgroundColor: '#FFFFFF',
+    padding: 12,
+    gap: 10,
+  },
+  markerToolsHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    gap: 10,
+  },
+  markerToolsTitle: {
+    color: TEXT_MAIN,
+    fontSize: 13,
+    fontWeight: '900',
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+  },
+  markerToolsActions: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'flex-end',
+    gap: 8,
+  },
+  markerActionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 999,
+    backgroundColor: '#F4F0FF',
+  },
+  markerActionButtonText: {
+    color: PRIMARY,
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  markerChipsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  markerChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingLeft: 10,
+    paddingRight: 8,
+    paddingVertical: 8,
+    borderRadius: 999,
+    backgroundColor: '#F7F4FF',
+    borderWidth: 1,
+    borderColor: '#D9D0F7',
+  },
+  markerChipText: {
+    color: TEXT_MAIN,
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  markerChipDelete: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: '#FFF1F1',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   stopsGroup: {
     gap: 8,

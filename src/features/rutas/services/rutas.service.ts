@@ -1,19 +1,4 @@
 import type { RouteCoordinate, RouteDraft, RouteType } from '@/features/rutas/types';
-import { normalizeRouteStops } from '@/features/rutas/types';
-
-const DEFAULT_STOP_DISTANCE_KM = 120;
-
-type GeocodeResult = {
-  lat: string;
-  lon: string;
-};
-
-function toCoordinate(point: GeocodeResult): RouteCoordinate {
-  return {
-    latitude: Number(point.lat),
-    longitude: Number(point.lon),
-  };
-}
 
 function haversineDistanceKm(from: RouteCoordinate, to: RouteCoordinate): number {
   const earthRadiusKm = 6371;
@@ -28,26 +13,6 @@ function haversineDistanceKm(from: RouteCoordinate, to: RouteCoordinate): number
     Math.sin(deltaLongitude / 2) ** 2 * Math.cos(latitude1) * Math.cos(latitude2);
 
   return 2 * earthRadiusKm * Math.asin(Math.sqrt(a));
-}
-
-async function geocodeStop(stopLabel: string): Promise<RouteCoordinate | null> {
-  const query = encodeURIComponent(stopLabel);
-  const response = await fetch(
-    `https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&q=${query}`,
-    {
-      headers: {
-        'User-Agent': 'ReviboApp/1.0',
-      },
-    },
-  );
-
-  const payload = (await response.json().catch(() => [])) as GeocodeResult[];
-
-  if (!response.ok || !Array.isArray(payload) || payload.length === 0) {
-    return null;
-  }
-
-  return toCoordinate(payload[0]);
 }
 
 async function getRouteSegment(
@@ -78,48 +43,27 @@ async function getRouteSegment(
   };
 }
 
-function estimateFallbackDistance(stops: string[], routeType: RouteType): number {
-  const typeMultiplier: Record<RouteType, number> = {
-    carretera_nueva: 1,
-    carretera_antigua: 0.88,
-    alternativa: 1.12,
-  };
-
-  const baseStops = Math.max(stops.length - 1, 1);
-  return baseStops * DEFAULT_STOP_DISTANCE_KM * typeMultiplier[routeType];
-}
-
 export async function buildRoutePreview(draft: RouteDraft): Promise<{
   coordinates: RouteCoordinate[];
   distanceKm: number;
 }> {
-  const normalizedStops = normalizeRouteStops(draft.stops);
-
-  if (normalizedStops.length < 2) {
-    return {
-      coordinates: [],
-      distanceKm: estimateFallbackDistance(normalizedStops, draft.routeType),
-    };
-  }
-
-  const geocodedStops = await Promise.all(normalizedStops.map(geocodeStop));
-  const validCoordinates = geocodedStops.filter(
-    (coordinate): coordinate is RouteCoordinate => coordinate !== null,
+  const markerCoordinates = draft.markerCoordinates.filter((coordinate) =>
+    Number.isFinite(coordinate.latitude) && Number.isFinite(coordinate.longitude),
   );
 
-  if (validCoordinates.length < 2) {
+  if (markerCoordinates.length < 2) {
     return {
-      coordinates: validCoordinates,
-      distanceKm: estimateFallbackDistance(normalizedStops, draft.routeType),
+      coordinates: markerCoordinates,
+      distanceKm: 0,
     };
   }
 
   const assembledCoordinates: RouteCoordinate[] = [];
   let totalDistanceKm = 0;
 
-  for (let index = 0; index < validCoordinates.length - 1; index += 1) {
-    const origin = validCoordinates[index];
-    const destination = validCoordinates[index + 1];
+  for (let index = 0; index < markerCoordinates.length - 1; index += 1) {
+    const origin = markerCoordinates[index];
+    const destination = markerCoordinates[index + 1];
     const segment = await getRouteSegment(origin, destination);
 
     totalDistanceKm += segment.distanceKm;

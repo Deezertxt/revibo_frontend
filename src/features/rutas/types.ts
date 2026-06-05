@@ -8,10 +8,10 @@ export type RouteCoordinate = {
 export type SavedRoute = {
   id: string;
   name: string;
-  stops: string[];
   summary: string;
   routeType: RouteType;
   distanceKm: number;
+  markerCoordinates: RouteCoordinate[];
   coordinates: RouteCoordinate[];
   createdAt: string;
   updatedAt: string;
@@ -19,8 +19,8 @@ export type SavedRoute = {
 
 export type RouteDraft = {
   name: string;
-  stops: string[];
   routeType: RouteType;
+  markerCoordinates: RouteCoordinate[];
 };
 
 export const ROUTE_STOP_COLORS = {
@@ -30,12 +30,14 @@ export const ROUTE_STOP_COLORS = {
   extra: '#7C3AED',
 } as const;
 
-export function normalizeRouteStops(stops: string[]): string[] {
-  return stops.map((stop) => stop.trim()).filter((stop) => stop.length > 0);
-}
+export function summarizeRouteMarkers(markerCoordinates: RouteCoordinate[]): string {
+  const markerCount = markerCoordinates.length;
 
-export function buildRouteSummary(stops: string[]): string {
-  return normalizeRouteStops(stops).join(' · ');
+  if (markerCount === 0) {
+    return 'Sin marcadores';
+  }
+
+  return `${markerCount} marcador${markerCount === 1 ? '' : 'es'}`;
 }
 
 export function formatRouteDistance(distanceKm: number): string {
