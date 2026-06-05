@@ -16,7 +16,7 @@ import { ReporteCard } from "./componentes/card_reporte";
 import { obtenerReportes } from "./services/editarService";
 import { useEditarReporteStore } from "./store/editarReporteStore";
 
-import EditarReporteFeature from "./ReportesIndexScreen";
+import EditarReporteFeature from "./index";
 
 export default function ReportesIndexScreen() {
   const reporteSeleccionado = useEditarReporteStore(
@@ -67,7 +67,7 @@ export default function ReportesIndexScreen() {
       <View style={[styles.mainContainer, styles.centerContainer]}>
         <StatusBar barStyle="light-content" backgroundColor="#6347D1" />
         <ActivityIndicator size="large" color="#FFF" />
-        <Text style={styles.loadingText}>Cargando reportes...</Text>
+        <Text style={styles.loadingText}>Cargando reporte...</Text>
       </View>
     );
   }
@@ -123,10 +123,6 @@ export default function ReportesIndexScreen() {
                   />
                   <Text style={styles.emptyTitle}>
                     No hay reportes registrados
-                  </Text>
-                  <Text style={styles.emptySubtitle}>
-                    Los incidentes viales que puedes editar aparecerán en esta
-                    lista.
                   </Text>
                 </View>
               }

@@ -79,7 +79,7 @@ export default function EditarReporteFeature() {
               <Ionicons name="arrow-back" size={24} color="white" />
             </TouchableOpacity>
           )}
-          <Text style={styles.headerTitle}>Modificar reporte</Text>
+          <Text style={styles.headerTitle}>Editar reporte</Text>
         </View>
 
         <Text
