@@ -386,11 +386,11 @@ function RouteFormScreen({
 
   return (
     <KeyboardAvoidingView
-      style={styles.screen}
+      style={{ flex: 1 }}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
       <ScrollView
-        contentContainerStyle={[styles.formScroll, { paddingBottom: insets.bottom + 104 }]}
+        contentContainerStyle={[styles.formScroll, { paddingBottom: insets.bottom + 200 }]}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
@@ -413,7 +413,7 @@ function RouteFormScreen({
             </Pressable>
           </View>
         </View>
-        <View style={styles.formCard}>
+        <View style={[styles.formCard, { paddingBottom: 24 }]}>
           <FieldLabel text="Nombre de la ruta" />
           <TextInput
             value={name}
@@ -435,45 +435,40 @@ function RouteFormScreen({
           />
 
           <View style={styles.formFooterActions}>
-            <Pressable onPress={onBack} style={styles.secondaryFormButton}>
-              <Text style={styles.secondaryFormButtonText}>Cancelar</Text>
+            <Pressable onPress={useMyLocation} style={styles.secondaryFormButton}>
+              <MaterialIcons name="my-location" size={16} color={PRIMARY} />
+              <Text style={styles.secondaryFormButtonText}>Mi ubicación</Text>
             </Pressable>
 
             <Pressable onPress={addMarker} style={styles.secondaryFormButton}>
-              <MaterialIcons name="add-location-alt" size={16} color={PRIMARY} />
-              <Text style={styles.secondaryFormButtonText}>Agregar marcador</Text>
-            </Pressable>
+             <MaterialIcons name="add-location-alt" size={16} color={PRIMARY} />
+             <Text style={styles.secondaryFormButtonText}>Agregar marcador</Text>
+             </Pressable>
           </View>
 
           <Pressable
             onPress={handleSave}
             disabled={!canSave || saving}
-            style={({ pressed }) => [
-              styles.confirmRouteButton,
-              !canSave && styles.confirmRouteButtonDisabled,
-              pressed && !(!canSave || saving) && styles.confirmRouteButtonPressed,
-            ]}
+            style={{
+              marginTop: 12,
+              marginHorizontal: 12,
+              marginBottom: 8,
+              height: 55,
+              borderRadius: 12,
+              backgroundColor: (!canSave || saving) ? '#8A6CE0' : '#5B37D0',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
           >
             {saving ? (
-              <ActivityIndicator color={PRIMARY} />
+              <ActivityIndicator color="white" />
             ) : (
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                <MaterialIcons name="check" size={18} color={PRIMARY} />
-                <Text style={styles.confirmRouteButtonText}>Guardar ruta</Text>
-              </View>
+              <Text style={{ color: 'white', fontWeight: 'bold', fontSize: 18, textAlign: 'center' }}>
+                Guardar ruta
+              </Text>
             )}
           </Pressable>
-
-          {errorMessage ? <Text style={styles.errorText}>{errorMessage}</Text> : null}
-
-          <View style={{ marginTop: 8 }}>
-            <Pressable onPress={useMyLocation} style={styles.useLocationButtonSecondary}>
-              <MaterialIcons name="my-location" size={16} color={PRIMARY} />
-              <Text style={styles.useLocationTextSecondary}>Usar mi ubicación como primer marcador</Text>
-            </Pressable>
-          </View>
         </View>
-
       </ScrollView>
     </KeyboardAvoidingView>
   );
@@ -534,12 +529,16 @@ function RouteMapEditor({
   return (
     <View style={styles.mapEditorCard}>
       <View style={styles.mapEditorHeader}>
-        <View>
+        <View style={{ flex: 1 }}>
           <Text style={styles.mapEditorTitle}>Mapa de marcadores</Text>
-          <Text style={styles.mapEditorSubtitle}>Mové los marcadores para definir origen, destino y paradas.</Text>
+          <Text style={styles.mapEditorSubtitle}>Mueve los marcadores para definir origen, destino y paradas.</Text>
           {routeDistanceLabel ? <Text style={styles.mapEditorDistance}>{routeDistanceLabel}</Text> : null}
         </View>
-        {loadingPreview ? <ActivityIndicator size="small" color={PRIMARY} /> : null}
+        {loadingPreview ? (
+          <View style={{ width: 24, alignItems: 'center', justifyContent: 'center' }}>
+          <ActivityIndicator size="small" color={PRIMARY} />
+      </View>
+      ) : null}
       </View>
 
       <View style={styles.mapPreviewWrap}>
@@ -578,16 +577,6 @@ function RouteMapEditor({
       <View style={styles.markerToolsCard}>
         <View style={styles.markerToolsHeader}>
           <Text style={styles.markerToolsTitle}>Marcadores</Text>
-          <View style={styles.markerToolsActions}>
-            <Pressable onPress={onUseMyLocation} style={styles.markerActionButton}>
-              <MaterialIcons name="my-location" size={14} color={PRIMARY} />
-              <Text style={styles.markerActionButtonText}>Mi ubicación</Text>
-            </Pressable>
-            <Pressable onPress={onAddMarker} style={styles.markerActionButton}>
-              <MaterialIcons name="add-location-alt" size={14} color={PRIMARY} />
-              <Text style={styles.markerActionButtonText}>Agregar</Text>
-            </Pressable>
-          </View>
         </View>
 
         <View style={styles.markerChipsRow}>
@@ -1074,7 +1063,8 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
   formScroll: {
-    paddingBottom: 20,
+    flexGrow: 1,
+    paddingTop: 0,
   },
   formHeader: {
     backgroundColor: PRIMARY,
@@ -1156,6 +1146,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#E7E1F8',
     padding: 14,
+    paddingBottom: 24,
     gap: 12,
   },
   fieldLabel: {

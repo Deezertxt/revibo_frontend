@@ -1111,28 +1111,6 @@ useEffect(() => {
               </View>
             ) : null}
 
-            {selectedIncident.status !== 'resuelto' ? (
-              <Pressable
-                style={(styles as any).routeButton}
-                onPress={() =>
-                  router.push({
-                    pathname: '/(tabs)/rutas',
-                    params: {
-                      incidentId: selectedIncident.id,
-                      incidentLat: String(selectedIncident.latitude),
-                      incidentLng: String(selectedIncident.longitude),
-                    },
-                  })
-                }>
-                <Text style={styles.routeButtonText}>Ver ruta</Text>
-                <MaterialIcons name="arrow-forward" size={18} color="#FFFFFF" />
-              </Pressable>
-            ) : (
-              <Pressable style={[(styles as any).routeButton, styles.routeButtonDisabled]} disabled>
-                <Text style={styles.routeButtonText}>Reporte resuelto</Text>
-              </Pressable>
-            )}
-
             <Pressable onPress={closeIncidentDetail} style={styles.closeSheetButton}>
               <Text style={styles.closeSheetText}>Cerrar</Text>
             </Pressable>
