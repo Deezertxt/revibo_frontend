@@ -1,7 +1,7 @@
 import React from "react";
 import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
 
-interface ReporteCardProps {
+interface ReporteCardResolverProps {
   item: {
     id_reporte?: string | number;
     id?: string | number;
@@ -13,7 +13,7 @@ interface ReporteCardProps {
     direccion?: string;
     fecha_inicio?: string | null;
   };
-  onPressEditar: () => void;
+  onPressResolver: () => void;
   onPressDetalle?: () => void;
 }
 
@@ -24,11 +24,11 @@ const GRAVEDAD_CONFIG: Record<string, { color: string; label: string }> = {
   Critico: { color: "#E74C3C", label: "Crítico" },
 };
 
-export function ReporteCard({
+export function ReporteCardResolver({
   item,
-  onPressEditar,
+  onPressResolver,
   onPressDetalle,
-}: ReporteCardProps) {
+}: ReporteCardResolverProps) {
   const gravedad = item.gravedad_reporte || "Bajo";
   const configGravedad = GRAVEDAD_CONFIG[gravedad] || {
     color: "#6347D1",
@@ -39,15 +39,12 @@ export function ReporteCard({
     item.direccionTexto || item.direccion || "Ubicación no especificada";
 
   return (
-    // Cambiamos el contenedor principal a un View para aislar los toques
     <View style={styles.cardContainer}>
-      {/* Toda la zona de la información es la que dispara el Detalle */}
       <TouchableOpacity
         style={styles.infoContainer}
         onPress={onPressDetalle}
         activeOpacity={0.7}
       >
-        {/* Fila Superior: Badges de Gravedad y Tipo */}
         <View style={styles.headerRow}>
           <View
             style={[
@@ -72,7 +69,6 @@ export function ReporteCard({
           </View>
         </View>
 
-        {/* Título y Descripción Corta */}
         <Text style={styles.title} numberOfLines={1}>
           {item.titulo || "Incidente sin título"}
         </Text>
@@ -80,7 +76,6 @@ export function ReporteCard({
           {item.descripcion || "Sin descripción proporcionada."}
         </Text>
 
-        {/* Footer de la Card: Dirección y Botón Editar */}
         <View style={styles.footerRow}>
           <View style={styles.locationContainer}>
             <Text style={styles.locationText} numberOfLines={1}>
@@ -88,13 +83,12 @@ export function ReporteCard({
             </Text>
           </View>
 
-          {/* El botón ahora reaccionará de manera independiente sin interferencias */}
           <TouchableOpacity
-            style={styles.editFooterButton}
-            onPress={onPressEditar}
+            style={styles.resolverFooterButton}
+            onPress={onPressResolver}
             activeOpacity={0.6}
           >
-            <Text style={styles.editFooterButtonText}>Editar</Text>
+            <Text style={styles.resolverFooterButtonText}>Resolver</Text>
           </TouchableOpacity>
         </View>
       </TouchableOpacity>
@@ -155,7 +149,7 @@ const styles = StyleSheet.create({
   locationContainer: {
     flexDirection: "row",
     alignItems: "center",
-    flex: 0.7, // Ajustado ligeramente para dar un margen seguro al botón
+    flex: 0.65,
   },
   locationText: {
     fontSize: 12,
@@ -176,7 +170,7 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     textTransform: "capitalize",
   },
-  editFooterButton: {
+  resolverFooterButton: {
     backgroundColor: "#6347D1",
     paddingHorizontal: 16,
     paddingVertical: 7,
@@ -184,7 +178,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  editFooterButtonText: {
+  resolverFooterButtonText: {
     color: "#FFF",
     fontSize: 12,
     fontWeight: "700",

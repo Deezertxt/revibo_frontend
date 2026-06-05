@@ -18,10 +18,8 @@ export type TipoReporte =
 export type GravedadReporte = "Bajo" | "Medio" | "Alto" | "Critico";
 
 interface EditarReporteState {
-  // === ESTADO SINOPSIS REQUERIDO POR EL INDEX ===
   reporteSeleccionado: any | null;
 
-  // Campos del Reporte desestructurados para el Wizard
   id_reporte: string | number | null;
   step: number;
   titulo: string;
@@ -37,7 +35,6 @@ interface EditarReporteState {
   direccionTexto: string;
   url_imagen: string[];
 
-  // Acciones
   setStep: (step: number) => void;
   updateData: (
     data: Partial<
@@ -52,7 +49,7 @@ interface EditarReporteState {
     >,
   ) => void;
   cargarReporteParaEditar: (reporteBackend: any) => void;
-  limpiarReporteSeleccionado: () => void; // <-- Declarada para ReportesIndexScreen
+  limpiarReporteSeleccionado: () => void; //
   reset: () => void;
 }
 
@@ -79,12 +76,10 @@ export const useEditarReporteStore = create<EditarReporteState>((set) => ({
   updateData: (data) => set((state) => ({ ...state, ...data })),
 
   cargarReporteParaEditar: (reporteBackend) => {
-    // Capturamos el array de imágenes sin importar si viene como 'imagenes' o 'url_imagen'
     const listaImagenes =
       reporteBackend.imagenes || reporteBackend.url_imagen || [];
 
     set({
-      // Guardamos la referencia completa del reporte original
       reporteSeleccionado: reporteBackend,
 
       id_reporte: reporteBackend.id_reporte || reporteBackend.id,
@@ -99,14 +94,12 @@ export const useEditarReporteStore = create<EditarReporteState>((set) => ({
       direccionTexto:
         reporteBackend.direccionTexto || reporteBackend.direccion || "",
 
-      // Sincronizamos la propiedad del Store con el arreglo del Backend
       url_imagen: Array.isArray(listaImagenes)
         ? listaImagenes
         : [listaImagenes],
     });
   },
 
-  // Vinculamos limpiarReporteSeleccionado para que limpie todo devolviendo al estado inicial
   limpiarReporteSeleccionado: () => set({ ...initialState }),
 
   reset: () => set({ ...initialState }),

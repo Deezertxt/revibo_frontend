@@ -11,18 +11,14 @@ import {
   View,
 } from "react-native";
 
-// === IMPORTS DE ESTADO GLOBAL Y SERVICIOS ===
 import { useAuthStore } from "../../shared/store/useAuthStore";
 import { ReporteCard } from "./componentes/card_reporte";
 import { obtenerReportes } from "./services/editarService";
 import { useEditarReporteStore } from "./store/editarReporteStore";
 
-// === IMPORTAMOS EL COMPONENTE DE LOS PASOS ===
-// ✅ CORREGIDO: Apunta al archivo 'index.tsx' vecino en lugar de a sí mismo
-import EditarReporteFeature from "./index";
+import EditarReporteFeature from "./ReportesIndexScreen";
 
 export default function ReportesIndexScreen() {
-  // Escuchamos de manera atómica para evitar que inputs internos del formulario despierten re-renders aquí
   const reporteSeleccionado = useEditarReporteStore(
     (state) => state.reporteSeleccionado,
   );
@@ -32,13 +28,11 @@ export default function ReportesIndexScreen() {
 
   const accessToken = useAuthStore((state) => state.accessToken);
 
-  // === ESTADOS LOCALES DE LA LISTA ===
   const [reportes, setReportes] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // 📡 Función que carga los reportes de la API
   const cargarReportesDesdeApi = async (mostrarLoaderSilencioso = false) => {
     if (!accessToken) {
       setError("No se detectó una sesión activa.");
@@ -68,9 +62,6 @@ export default function ReportesIndexScreen() {
     cargarReportesDesdeApi(true);
   };
 
-  // ==========================================
-  // ⏳ VISTA DE CARGA GLOBAL (Solo para la lista)
-  // ==========================================
   if (loading && !refreshing) {
     return (
       <View style={[styles.mainContainer, styles.centerContainer]}>
@@ -81,26 +72,19 @@ export default function ReportesIndexScreen() {
     );
   }
 
-  // ==========================================
-  // 🖼️ RENDERIZADO CONDICIONAL SEGURO
-  // ==========================================
   return (
     <View style={styles.mainContainer}>
       <StatusBar barStyle="light-content" backgroundColor="#6347D1" />
 
       {reporteSeleccionado ? (
-        // MODO EDICIÓN: Evitamos bloqueos usando una vista aislada en la raíz del árbol JSX
         <View style={{ flex: 1 }}>
           <EditarReporteFeature />
         </View>
       ) : (
-        // VISTA NORMAL: LISTA DE REPORTES
         <>
-          {/* ENCABEZADO */}
           <View style={styles.headerContainer}>
             <View>
-              <Text style={styles.headerSubtitle}>Plataforma Revibo</Text>
-              <Text style={styles.headerTitle}>Mis Reportes</Text>
+              <Text style={styles.headerTitle}> Reportes</Text>
             </View>
             <TouchableOpacity
               style={styles.syncButton}
@@ -166,7 +150,6 @@ export default function ReportesIndexScreen() {
                 <ReporteCard
                   item={item}
                   onPressEditar={() => {
-                    // El uso de setTimeout difiere la actualización de Zustand al final de la cola.
                     setTimeout(() => {
                       cargarReporteParaEditar(item);
                     }, 50);
@@ -181,7 +164,6 @@ export default function ReportesIndexScreen() {
   );
 }
 
-// === ESTILOS ===
 const styles = StyleSheet.create({
   mainContainer: { flex: 1, backgroundColor: "#5339B8" },
   headerContainer: {

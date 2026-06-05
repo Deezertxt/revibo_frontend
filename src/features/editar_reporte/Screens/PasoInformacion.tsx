@@ -272,7 +272,7 @@ export default function PasoInformacion({ alSiguiente }: PasoInformacionProps) {
     if (alSiguiente) {
       alSiguiente();
     } else {
-      setStep(1); // 📍 PASO 1: Redirección limpia al mapa de UbicaciónEditar
+      setStep(1);
     }
   };
 

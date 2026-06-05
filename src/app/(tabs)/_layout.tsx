@@ -67,7 +67,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="reportes_menu"
         options={{
-          title: "Reportar",
+          title: "Reportes",
           tabBarIcon: ({ color }) => (
             <FontAwesome name="pencil" size={24} color={color} />
           ),
@@ -116,6 +116,7 @@ export default function TabLayout() {
       <Tabs.Screen name="explore" options={{ href: null }} />
       <Tabs.Screen name="crear_reportes" options={{ href: null }} />
       <Tabs.Screen name="editar_reporte" options={{ href: null }} />
+      <Tabs.Screen name="eliminar_reporte" options={{ href: null }} />
     </Tabs>
   );
 }

@@ -20,18 +20,15 @@ export default function AdminReportesScreen() {
   return (
     <View style={styles.container}>
       <View style={styles.menuWrapper}>
-        {/* Encabezado del Panel */}
         <View style={styles.headerContainer}>
+          <Text style={styles.subtitle}>GESTIONA LOS REPORTES</Text>
           <Text style={styles.title}>PANEL DE CONTROL</Text>
-          <Text style={styles.subtitle}>Gestiona los</Text>
         </View>
 
-        {/* Contenedor de la Fila de Botones */}
         <View style={styles.gridContainer}>
-          {/* 1. BOTÓN: CREAR REPORTE */}
           <TouchableOpacity
             style={styles.squareButton}
-            onPress={() => router.push("/(tabs)/crear_reportes")}
+            onPress={() => router.push("/crear_reportes")}
             activeOpacity={0.8}
           >
             <View style={styles.iconCircle}>
@@ -44,10 +41,9 @@ export default function AdminReportesScreen() {
             <Text style={styles.buttonText}>Crear{"\n"}Reporte</Text>
           </TouchableOpacity>
 
-          {/* 2. BOTÓN: EDITAR REPORTE */}
           <TouchableOpacity
             style={styles.squareButton}
-            onPress={() => router.push("/(tabs)/editar_reporte")}
+            onPress={() => router.push("/editar_reporte")}
             activeOpacity={0.8}
           >
             <View style={styles.iconCircle}>
@@ -56,17 +52,20 @@ export default function AdminReportesScreen() {
             <Text style={styles.buttonText}>Editar{"\n"}Reporte</Text>
           </TouchableOpacity>
 
-          {/* 3. BOTÓN: ELIMINAR REPORTE 
-          <TouchableOpacity 
-            style={styles.squareButton} 
-            onPress={() => router.push("/(tabs)/eliminar_reporte")}
+          <TouchableOpacity
+            style={styles.squareButton}
+            onPress={() => router.push("/eliminar_reporte")}
             activeOpacity={0.8}
           >
             <View style={styles.iconCircle}>
-              <MaterialIcons name="delete-outline" size={26} color="#FFFFFF" />
+              <MaterialIcons
+                name="check-circle-outline"
+                size={26}
+                color="#FFFFFF"
+              />
             </View>
-            <Text style={styles.buttonText}>Eliminar{"\n"}Reporte</Text>
-          </TouchableOpacity>*/}
+            <Text style={styles.buttonText}>Resolver{"\n"}Reporte</Text>
+          </TouchableOpacity>
         </View>
       </View>
     </View>
@@ -76,11 +75,11 @@ export default function AdminReportesScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#6347D1", // Tu color morado base de la interfaz
+    backgroundColor: "#6347D1",
   },
   menuWrapper: {
     flex: 1,
-    justifyContent: "center", // Centra todo el bloque en medio de la pantalla
+    justifyContent: "center",
     paddingHorizontal: 24,
   },
   headerContainer: {
@@ -88,7 +87,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   subtitle: {
-    color: "#B4A3F5", // Morado claro sutil para el tag superior
+    color: "rgba(255, 255, 255, 0.7)",
     fontSize: 11,
     fontWeight: "bold",
     letterSpacing: 1.5,
@@ -106,25 +105,22 @@ const styles = StyleSheet.create({
   },
   squareButton: {
     width: BUTTON_SIZE,
-    height: BUTTON_SIZE, // Forzamos a que el alto sea igual al ancho calculado
-    backgroundColor: "#5034B7", // Tono más oscuro para dar contraste premium sobre el fondo
+    height: BUTTON_SIZE,
+    backgroundColor: "#5034B7",
     borderRadius: 18,
     alignItems: "center",
     justifyContent: "center",
     padding: 8,
-    // Sombras para Android
     elevation: 6,
-    // Sombras para iOS
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.22,
     shadowRadius: 5.46,
-    // Efecto de borde fino semi-transparente
     borderWidth: 1,
     borderColor: "rgba(255, 255, 255, 0.12)",
   },
   iconCircle: {
-    backgroundColor: "rgba(255, 255, 255, 0.15)", // Fondo translúcido para el icono
+    backgroundColor: "rgba(255, 255, 255, 0.15)",
     padding: 10,
     borderRadius: 12,
     marginBottom: 8,

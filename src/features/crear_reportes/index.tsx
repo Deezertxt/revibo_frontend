@@ -1,6 +1,8 @@
 import { Ionicons } from "@expo/vector-icons";
-import React from "react";
+import { useRouter } from "expo-router";
+import React, { useEffect } from "react";
 import {
+  BackHandler,
   StatusBar,
   StyleSheet,
   Text,
@@ -10,12 +12,12 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useCrearReporteStore } from "./store/crearReporteStore";
 
-// Pantallas
 import PasoImagenes from "./screens/PasoImegenes";
 import PasoInformacion from "./screens/PasoInformacion";
 import PasoUbicacion from "./screens/PasoUbicación";
 
 export default function CrearReporteFeature() {
+  const router = useRouter();
   const step = useCrearReporteStore((state) => state.step);
   const setStep = useCrearReporteStore((state) => state.setStep);
   const titles = ["Información", "Ubicación", "Resumen"];
@@ -23,8 +25,29 @@ export default function CrearReporteFeature() {
   const handleBack = () => {
     if (step > 0) {
       setStep(step - 1);
+    } else {
+      router.push("/(tabs)/reportes_menu");
     }
   };
+
+  useEffect(() => {
+    const backAction = () => {
+      if (step > 0) {
+        setStep(step - 1);
+        return true;
+      } else {
+        router.push("/(tabs)/reportes_menu");
+        return true;
+      }
+    };
+
+    const backHandler = BackHandler.addEventListener(
+      "hardwareBackPress",
+      backAction,
+    );
+
+    return () => backHandler.remove();
+  }, [step]);
 
   const renderContent = () => {
     switch (step) {
@@ -45,17 +68,14 @@ export default function CrearReporteFeature() {
 
       <View style={styles.header}>
         <View style={styles.topRow}>
-          {step > 0 && (
-            <TouchableOpacity onPress={handleBack} style={styles.backButton}>
-              <Ionicons name="arrow-back" size={24} color="white" />
-            </TouchableOpacity>
-          )}
+          <TouchableOpacity onPress={handleBack} style={styles.backButton}>
+            <Ionicons name="arrow-back" size={24} color="white" />
+          </TouchableOpacity>
           <Text style={styles.headerTitle}>Crear reporte</Text>
         </View>
 
         <Text style={styles.headerSubtitle}>{titles[step]}</Text>
 
-        {/* Barra de Progreso */}
         <View style={styles.progressContainer}>
           {[0, 1, 2].map((i) => (
             <View
@@ -104,7 +124,6 @@ const styles = StyleSheet.create({
     marginTop: 5,
     marginLeft: 36,
   },
-
   progressContainer: {
     flexDirection: "row",
     marginTop: 20,

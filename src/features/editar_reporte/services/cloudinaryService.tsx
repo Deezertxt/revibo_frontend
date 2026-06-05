@@ -4,7 +4,6 @@ const UPLOAD_PRESET = "imagenes";
 export const uploadImageToCloudinary = async (
   imageUri: string,
 ): Promise<string> => {
-  // CORRECCIÓN: Esta es la URL pública oficial para subir imágenes vía REST API
   const url = `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/image/upload`;
 
   const formData = new FormData();

@@ -18,9 +18,6 @@ export type EditarReportePayload = {
   url_imagen: string[];
 };
 
-/**
- * Genera un string de fecha/hora actual en el formato estricto del backend (dd-mm-YYYY HH:mm)
- */
 function obtenerFechaActualBackend(): string {
   const ahora = new Date();
 
@@ -34,9 +31,6 @@ function obtenerFechaActualBackend(): string {
   return `${dia}-${mes}-${anio} ${hora}:${min}`;
 }
 
-/**
- * Convierte de forma exacta el formato de la UI (YYYY/MM/DD | HH:mm) al formato del backend (dd-mm-YYYY HH:mm)
- */
 function formatearFechaEstricta(fechaInput: any): string | null {
   if (!fechaInput) return null;
 
@@ -74,9 +68,6 @@ function formatearFechaEstricta(fechaInput: any): string | null {
   return null;
 }
 
-/**
- * Obtiene la lista completa de reportes
- */
 export async function obtenerReportes(token: string): Promise<any[]> {
   const response = await fetch(`${API_URL}/reporte`, {
     method: "GET",
@@ -91,9 +82,6 @@ export async function obtenerReportes(token: string): Promise<any[]> {
   return responseBody?.data || responseBody || [];
 }
 
-/**
- * Obtiene un único reporte por su ID
- */
 export async function obtenerReportePorId(
   idReporte: string | number,
   token: string,
@@ -111,41 +99,25 @@ export async function obtenerReportePorId(
   return responseBody?.data || responseBody;
 }
 
-/**
- * Envía las modificaciones del reporte (PATCH)
- */
 export async function actualizarReporte(
   idReporte: string | number,
   payload: EditarReportePayload,
   token: string,
 ): Promise<{ message: string; data?: any }> {
-  // 1. Construimos la estructura inicial tipando dinámicamente para mutar propiedades si es necesario
   const payloadFormateado: Record<string, any> = {
     ...payload,
   };
 
-  // 2. Aplicamos la lógica condicional estricta
   if (payload.tipo_reporte === "cierre_programado") {
-    // Si es cierre programado, formateamos lo que viene de la UI obligatoriamente
     payloadFormateado.fecha_inicio = formatearFechaEstricta(
       payload.fecha_inicio,
     );
     payloadFormateado.fecha_fin = formatearFechaEstricta(payload.fecha_fin);
   } else {
-    // Para cualquier otro tipo, fijamos el inicio al momento actual y OMITIMOS el fin
     payloadFormateado.fecha_inicio = obtenerFechaActualBackend();
 
-    // Eliminamos la propiedad por completo para que no sea transmitida en el JSON
     delete payloadFormateado.fecha_fin;
   }
-
-  // 🚀 LOG DEPURACIÓN: Comprueba en tu terminal que 'fecha_fin' desaparece en incidentes normales
-  console.log(
-    "================ 🛰️ ENVIANDO AL BACKEND (PATCH) ================\n",
-    `URL: ${API_URL}/reporte/${idReporte}\n`,
-    JSON.stringify(payloadFormateado, null, 2),
-    "\n================================================================",
-  );
 
   const response = await fetch(`${API_URL}/reporte/${idReporte}`, {
     method: "PATCH",

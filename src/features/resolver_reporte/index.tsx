@@ -1,214 +1,202 @@
-{
-  /*import { Ionicons } from "@expo/vector-icons";
+import { Ionicons } from "@expo/vector-icons";
 import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   FlatList,
-  RefreshControl,
-  StatusBar,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from "react-native";
-
-// === IMPORTS DE ESTADO GLOBAL Y SERVICIOS ===
 import { useAuthStore } from "../../shared/store/useAuthStore";
-import { ReporteCard } from "./componentes/card_resolver";
-import { obtenerReportes } from "../editar_reporte/services/editarService";
-import { useEditarReporteStore } from "./store/editarReporteStore";
+import { ReporteCardResolver } from "./componentes/card_resolver";
+import { eliminarImagenDeCloudinary } from "./services/borrarCloud";
+import {
+  eliminarReportePorId,
+  obtenerReportesParaResolver,
+} from "./services/resolverServices";
 
-// === IMPORTAMOS EL COMPONENTE DE LOS PASOS ===
-import EditarReporteFeature from "./ReportesIndexScreen";
-
-export default function ReportesIndexScreen() {
-  // Escuchamos de manera atómica para evitar que inputs internos del formulario despierten re-renders aquí
-  const reporteSeleccionado = useEditarReporteStore(
-    (state) => state.reporteSeleccionado,
-  );
-  const cargarReporteParaEditar = useEditarReporteStore(
-    (state) => state.cargarReporteParaEditar,
-  );
-
+export default function ResolverReporteScreen() {
   const accessToken = useAuthStore((state) => state.accessToken);
-
-  // === ESTADOS LOCALES DE LA LISTA ===
   const [reportes, setReportes] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [actionLoading, setActionLoading] = useState<boolean>(false);
 
-  // 📡 Función que carga los reportes de la API
-  const cargarReportesDesdeApi = async (mostrarLoaderSilencioso = false) => {
-    if (!accessToken) {
-      setError("No se detectó una sesión activa.");
-      setLoading(false);
-      return;
-    }
-    if (!mostrarLoaderSilencioso) setLoading(true);
-    setError(null);
-
+  const cargarReportes = async () => {
+    if (!accessToken) return;
     try {
-      const data = await obtenerReportes(accessToken);
-      setReportes(Array.isArray(data) ? data : []);
-    } catch (err: any) {
-      setError(err.message || "Ocurrió un error al cargar los reportes.");
+      setLoading(true);
+      const data = await obtenerReportesParaResolver(accessToken);
+      setReportes(data);
+    } catch (error: any) {
+      Alert.alert(
+        "Error",
+        error.message || "No se pudieron cargar los reportes.",
+      );
     } finally {
       setLoading(false);
-      setRefreshing(false);
     }
   };
 
   useEffect(() => {
-    cargarReportesDesdeApi();
+    cargarReportes();
   }, [accessToken]);
 
-  const manejarRefresh = () => {
-    setRefreshing(true);
-    cargarReportesDesdeApi(true);
+  const handleConfirmarResolver = (item: any) => {
+    const idReporte = item.id || item.id_reporte;
+
+    if (!idReporte) {
+      Alert.alert("Error", "No se encontró el ID del reporte.");
+      return;
+    }
+
+    Alert.alert(
+      "¿Resolver Reporte?",
+      `¿Estás seguro de que deseas resolver el reporte "${item.titulo || "este reporte"}"`,
+      [
+        { text: "Cancelar", style: "cancel" },
+        {
+          text: "Resolver",
+          style: "destructive",
+          onPress: () => ejecutarEliminacion(idReporte),
+        },
+      ],
+    );
   };
 
-  // ==========================================
-  // ⏳ VISTA DE CARGA GLOBAL (Solo para la lista)
-  // ==========================================
-  if (loading && !refreshing) {
+  const ejecutarEliminacion = async (idReporte: string | number) => {
+    if (!accessToken) return;
+    try {
+      setActionLoading(true);
+
+      const reporteAEliminar = reportes.find(
+        (r) => r.id === idReporte || r.id_reporte === idReporte,
+      );
+
+      if (reporteAEliminar && reporteAEliminar.url_imagen) {
+        const urls: string[] = Array.isArray(reporteAEliminar.url_imagen)
+          ? reporteAEliminar.url_imagen
+          : JSON.parse(reporteAEliminar.url_imagen || "[]");
+
+        if (urls.length > 0) {
+          await Promise.all(
+            urls.map((url) =>
+              eliminarImagenDeCloudinary(url).catch((err) => console.log(err)),
+            ),
+          );
+        }
+      }
+
+      const respuesta = await eliminarReportePorId(idReporte, accessToken);
+
+      setReportes((prev) =>
+        prev.filter((r) => r.id !== idReporte && r.id_reporte !== idReporte),
+      );
+
+      Alert.alert("Éxito", respuesta.message || "Reporte resuelto");
+    } catch (error: any) {
+      Alert.alert(
+        "Error al eliminar",
+        error.message || "Inténtalo de nuevo más tarde.",
+      );
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  if (loading) {
     return (
-      <View style={[styles.mainContainer, styles.centerContainer]}>
-        <StatusBar barStyle="light-content" backgroundColor="#6347D1" />
-        <ActivityIndicator size="large" color="#FFF" />
-        <Text style={styles.loadingText}>Cargando reportes...</Text>
+      <View style={styles.centerContainer}>
+        <ActivityIndicator size="large" color="#ffffff" />
+        <Text style={styles.loadingText}>
+          Obteniendo reportes de la base de datos...
+        </Text>
       </View>
     );
   }
 
-  // ==========================================
-  // 🖼️ RENDERIZADO CONDICIONAL SEGURO
-  // ==========================================
   return (
-    <View style={styles.mainContainer}>
-      <StatusBar barStyle="light-content" backgroundColor="#6347D1" />
-
-      {reporteSeleccionado ? (
-        // MODO EDICIÓN: Evitamos bloqueos usando una vista aislada en la raíz del árbol JSX
-        // Se removió el {console.log} de aquí adentro que causaba problemas de tipado 'void'
-        <View style={{ flex: 1 }}>
-          <EditarReporteFeature />
+    <View style={styles.container}>
+      <View style={styles.headerContainer}>
+        <View>
+          <Text style={styles.headerTitle}>Resolver Reporte</Text>
         </View>
-      ) : (
-        // VISTA NORMAL: LISTA DE REPORTES
-        <>
-          {/* ENCABEZADO *
-          <View style={styles.headerContainer}>
-            <View>
-              <Text style={styles.headerSubtitle}>Plataforma Revibo</Text>
-              <Text style={styles.headerTitle}>Mis Reportes</Text>
-            </View>
-            <TouchableOpacity
-              style={styles.syncButton}
-              onPress={() => cargarReportesDesdeApi()}
-            >
-              <Ionicons name="refresh" size={20} color="#FFF" />
-            </TouchableOpacity>
-          </View>
+        <TouchableOpacity
+          style={styles.syncButton}
+          onPress={cargarReportes}
+          activeOpacity={0.7}
+        >
+          <Ionicons name="refresh" size={22} color="#FFF" />
+        </TouchableOpacity>
+      </View>
 
-          {error ? (
-            <View style={styles.centerContainer}>
-              <Ionicons
-                name="cloud-offline-outline"
-                size={50}
-                color="#E0D7FF"
-              />
-              <Text style={styles.errorText}>{error}</Text>
-              <TouchableOpacity
-                style={styles.retryButton}
-                onPress={() => cargarReportesDesdeApi()}
-              >
-                <Text style={styles.retryButtonText}>Reintentar</Text>
-              </TouchableOpacity>
-            </View>
-          ) : reportes.length === 0 ? (
-            <FlatList
-              data={[]}
-              renderItem={null}
-              contentContainerStyle={styles.listContent}
-              ListEmptyComponent={
-                <View style={styles.emptyContainer}>
-                  <Ionicons
-                    name="document-text-outline"
-                    size={60}
-                    color="#E0D7FF"
-                  />
-                  <Text style={styles.emptyTitle}>
-                    No hay reportes registrados
-                  </Text>
-                  <Text style={styles.emptySubtitle}>
-                    Los incidentes viales que puedes editar aparecerán en esta
-                    lista.
-                  </Text>
-                </View>
-              }
-              refreshControl={
-                <RefreshControl
-                  refreshing={refreshing}
-                  onRefresh={manejarRefresh}
-                  colors={["#6347D1"]}
-                  tintColor="#FFF"
-                />
-              }
-            />
-          ) : (
-            <FlatList
-              data={reportes}
-              contentContainerStyle={styles.listContent}
-              keyExtractor={(item) =>
-                String(item.id_reporte || item.id || Math.random())
-              }
-              renderItem={({ item }) => (
-                <ReporteCard
-                  item={item}
-                  onPressEditar={() => {
-                    // El uso de setTimeout difiere la actualización de Zustand al final de la cola.
-                    // Esto evita colisiones de renderizado síncronas entre la lista que se destruye y el formulario que nace.
-                    setTimeout(() => {
-                      cargarReporteParaEditar(item);
-                    }, 50);
-                  }}
-                />
-              )}
-            />
-          )}
-        </>
+      {actionLoading && (
+        <View style={styles.miniLoader}>
+          <ActivityIndicator size="small" color="#6347D1" />
+          <Text style={styles.miniLoaderText}>Resolviendo reporte...</Text>
+        </View>
       )}
+
+      <FlatList
+        data={reportes}
+        keyExtractor={(item) =>
+          (item.id || item.id_reporte || Math.random()).toString()
+        }
+        renderItem={({ item }) => (
+          <ReporteCardResolver
+            item={item}
+            onPressResolver={() => handleConfirmarResolver(item)}
+            onPressDetalle={() =>
+              console.log("Ver detalle del reporte", item.id)
+            }
+          />
+        )}
+        contentContainerStyle={styles.listContent}
+        showsVerticalScrollIndicator={false}
+        ListEmptyComponent={
+          <View style={styles.emptyContainer}>
+            <Text style={styles.emptyText}>
+              No quedan reportes viales activos
+            </Text>
+          </View>
+        }
+      />
     </View>
   );
 }
 
-// === ESTILOS ===
 const styles = StyleSheet.create({
-  mainContainer: { flex: 1, backgroundColor: "#5339B8" },
+  container: {
+    flex: 1,
+    backgroundColor: "#6347D1",
+  },
   headerContainer: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
     paddingHorizontal: 20,
-    paddingTop: 30,
-    paddingBottom: 20,
+    paddingTop: 24,
+    paddingBottom: 16,
     backgroundColor: "#6347D1",
-    borderBottomWidth: 1,
-    borderColor: "#5339B8",
   },
-  headerSubtitle: {
-    fontSize: 12,
-    fontWeight: "600",
-    color: "#E0D7FF",
+  headerTitle: {
+    fontSize: 26,
+    fontWeight: "bold",
+    color: "#FFF",
+    marginTop: 2,
+  },
+  screenSubtitle: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: "rgba(255, 255, 255, 0.7)",
     textTransform: "uppercase",
     letterSpacing: 0.5,
   },
-  headerTitle: { fontSize: 24, fontWeight: "bold", color: "#FFF" },
   syncButton: {
     backgroundColor: "rgba(255, 255, 255, 0.15)",
-    width: 40,
-    height: 40,
+    width: 42,
+    height: 42,
     borderRadius: 12,
     justifyContent: "center",
     alignItems: "center",
@@ -217,49 +205,46 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
-    padding: 30,
+    backgroundColor: "#6347D1",
   },
   loadingText: {
-    marginTop: 14,
-    fontSize: 15,
-    color: "#FFF",
+    marginTop: 10,
+    fontSize: 14,
+    color: "#ffffff",
     fontWeight: "500",
   },
-  listContent: { padding: 16, paddingBottom: 30 },
-  errorText: {
-    fontSize: 15,
-    color: "#FFD2D2",
-    textAlign: "center",
-    marginTop: 12,
-    marginBottom: 20,
-    fontWeight: "500",
+  listContent: {
+    paddingHorizontal: 20,
+    paddingBottom: 30,
   },
-  retryButton: {
-    backgroundColor: "#FFF",
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 12,
-  },
-  retryButtonText: { color: "#6347D1", fontWeight: "bold", fontSize: 14 },
   emptyContainer: {
+    marginTop: 40,
     alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: 80,
     paddingHorizontal: 20,
   },
-  emptyTitle: {
-    fontSize: 18,
-    fontWeight: "bold",
-    color: "#FFF",
-    marginTop: 16,
-  },
-  emptySubtitle: {
-    fontSize: 14,
-    color: "#E0D7FF",
+  emptyText: {
+    fontSize: 15,
+    color: "#ffffff",
     textAlign: "center",
-    marginTop: 8,
-    lineHeight: 20,
+    fontWeight: "500",
+    lineHeight: 22,
+  },
+  miniLoader: {
+    flexDirection: "row",
+    backgroundColor: "rgba(99, 71, 209, 0.12)",
+    padding: 12,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 10,
+    marginHorizontal: 20,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: "rgba(99, 71, 209, 0.2)",
+  },
+  miniLoaderText: {
+    color: "#6347D1",
+    fontSize: 14,
+    fontWeight: "600",
   },
 });
-*/
-}

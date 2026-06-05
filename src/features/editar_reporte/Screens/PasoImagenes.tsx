@@ -38,7 +38,6 @@ export default function PasoImagenes({
   const [imagenesLocales, setImagenesLocales] = useState<string[]>([]);
   const [imagenesRemotas, setImagenesRemotas] = useState<string[]>([]);
 
-  // Sincronización segura controlando que no se dupliquen al re-montar el paso
   useEffect(() => {
     if (store.url_imagen && Array.isArray(store.url_imagen)) {
       setImagenesRemotas(store.url_imagen);
@@ -98,7 +97,6 @@ export default function PasoImagenes({
     try {
       let nuevasUrls: string[] = [];
 
-      // Subida exclusiva de imágenes nuevas locales
       if (imagenesLocales.length > 0) {
         const promesasSubida = imagenesLocales.map((uri) =>
           uploadImageToCloudinary(uri),
@@ -106,7 +104,6 @@ export default function PasoImagenes({
         nuevasUrls = await Promise.all(promesasSubida);
       }
 
-      // Combinación final explícita (Viejas que sobrevivieron + Nuevas de Cloudinary)
       const urlsFinales = [...imagenesRemotas, ...nuevasUrls];
 
       const body = {
@@ -114,8 +111,8 @@ export default function PasoImagenes({
         descripcion: store.descripcion,
         tipo_reporte: store.tipo_reporte!,
         gravedad_reporte: store.gravedad_reporte!,
-        fecha_inicio: store.fecha_inicio, // Se formateará de forma automática dentro de actualizarReporte()
-        fecha_fin: store.fecha_fin, // Se formateará de forma automática dentro de actualizarReporte()
+        fecha_inicio: store.fecha_inicio,
+        fecha_fin: store.fecha_fin,
         geom: store.geom,
         url_imagen: urlsFinales,
       };
