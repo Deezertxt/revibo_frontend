@@ -1,5 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
+import { useRouter } from "expo-router";
 import React, { useState } from "react";
 import {
   ActivityIndicator,
@@ -25,18 +26,18 @@ const formatearVista = (fechaStr: string | null): string => {
 };
 
 export default function PasoImagenes() {
+  const router = useRouter();
   const store = useCrearReporteStore();
   const accessToken = useAuthStore((state) => state.accessToken);
   const [loading, setLoading] = useState(false);
 
-  // Leemos las imágenes directamente desde el store global
   const imagenesGlobales = store.url_imagen || [];
 
   const seleccionarImagen = async () => {
     if (imagenesGlobales.length >= 5) {
       Alert.alert(
         "Límite alcanzado",
-        "Solo puedes subir un máximo de 5 imágenes.",
+        "Solo puedes subir un maximum de 5 imágenes.",
       );
       return;
     }
@@ -58,7 +59,6 @@ export default function PasoImagenes() {
     });
 
     if (!result.canceled) {
-      // Guardamos la nueva URI local en el store global
       store.updateData({
         url_imagen: [...imagenesGlobales, result.assets[0].uri],
       });
@@ -66,7 +66,6 @@ export default function PasoImagenes() {
   };
 
   const eliminarImagenLocal = (indexAEliminar: number) => {
-    // Actualizamos el store global filtrando la imagen eliminada
     store.updateData({
       url_imagen: imagenesGlobales.filter(
         (_, index) => index !== indexAEliminar,
@@ -97,7 +96,7 @@ export default function PasoImagenes() {
 
     try {
       let urlsDeInternet: string[] = [];
-      // Subimos a Cloudinary las URIs locales almacenadas en el store
+
       if (imagenesGlobales.length > 0) {
         const promesasSubida = imagenesGlobales.map((uri) =>
           uploadImageToCloudinary(uri),
@@ -123,6 +122,7 @@ export default function PasoImagenes() {
           text: "Volver al inicio",
           onPress: () => {
             store.reset();
+            router.replace("/(tabs)/reportes_menu");
           },
         },
       ]);
