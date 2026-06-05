@@ -85,7 +85,7 @@ export async function loadRoutesFromBackend(
     return currentRoutes;
   }
 
-  const response = await fetch(`${API_URL}/rutas/${userId}`, {
+  const response = await fetch(`${API_URL}/rutas`, {
     headers: {
       Accept: 'application/json',
       Authorization: `Bearer ${token}`,
@@ -133,7 +133,7 @@ export async function createRouteOnBackend(
   const originCoordinate = routeCoordinates[0];
   const destinationCoordinate = routeCoordinates[routeCoordinates.length - 1];
 
-  const response = await fetch(`${API_URL}/rutas/${userId}`, {
+  const response = await fetch(`${API_URL}/rutas`, {
     method: 'POST',
     headers: {
       Accept: 'application/json',

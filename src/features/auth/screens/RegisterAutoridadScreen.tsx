@@ -1,15 +1,21 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Controller, useForm } from 'react-hook-form';
+import { Ionicons } from '@expo/vector-icons';
 import {
+    ActivityIndicator,
     Alert,
     ScrollView,
     StyleSheet,
-    Switch,
     Text,
     TextInput,
     TouchableOpacity,
     View,
 } from 'react-native';
+import { useAuthStore } from '@/shared/store/useAuthStore';
+import {
+  createAutoridad,
+  getInstituciones,
+} from '../services/autoridad.service';
 
 const PRIMARY = '#5B3FD9';
 const ACCENT = '#7C63E8';
@@ -22,12 +28,11 @@ type FormData = {
   confirmarContrasena: string;
 };
 
-const INSTITUCIONES = [
-  'Policía Boliviana',
-  'ABC – Adm. Boliviana de Carreteras',
-  'Gobernación de Cochabamba',
-  'GAMC – Gobierno Municipal',
-];
+type Institucion = {
+  id_institucion: string;
+  nombre: string;
+  descripcion?: string;
+};
 
 const PASOS = ['Datos', 'Acceso', 'Institución'];
 
@@ -35,15 +40,13 @@ export default function RegisterAutoridadScreen() {
   const [paso, setPaso] = useState(0);
   const [showPass, setShowPass] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
-  const [institucionSeleccionada, setInstitucionSeleccionada] = useState('');
-  const [permisos, setPermisos] = useState({
-    crearReportes: false,
-    editarReportes: false,
-    eliminarReportes: false,
-    programarCierres: false,
-  });
+  const [institucionSeleccionada, setInstitucionSeleccionada] = useState<string>('');
+  const [instituciones, setInstituciones] = useState<Institucion[]>([]);
+  const [loadingInstituciones, setLoadingInstituciones] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const token = useAuthStore((state) => state.getAccessToken());
 
-  const { control, handleSubmit, watch, trigger } = useForm<FormData>({
+  const { control, handleSubmit, watch, trigger, reset } = useForm<FormData>({
     defaultValues: {
       nombreCompleto: '',
       correo: '',
@@ -56,9 +59,30 @@ export default function RegisterAutoridadScreen() {
 
   const contrasena = watch('contrasena');
 
-  const togglePermiso = (key: keyof typeof permisos) => {
-    setPermisos(prev => ({ ...prev, [key]: !prev[key] }));
-  };
+  useEffect(() => {
+    const loadInstituciones = async () => {
+      if (!token) {
+        return;
+      }
+
+      setLoadingInstituciones(true);
+
+      try {
+        const data = await getInstituciones(token);
+        setInstituciones(data);
+      } catch (error) {
+        const message =
+          error instanceof Error
+            ? error.message
+            : 'No se pudieron cargar las instituciones.';
+        Alert.alert('Error', message);
+      } finally {
+        setLoadingInstituciones(false);
+      }
+    };
+
+    loadInstituciones();
+  }, [token]);
 
   const siguientePaso = async () => {
     let valido = false;
@@ -70,14 +94,55 @@ export default function RegisterAutoridadScreen() {
     if (valido) setPaso(paso + 1);
   };
 
-  const onSubmit = () => {
+  const anteriorPaso = () => {
+    setPaso((p) => Math.max(0, p - 1));
+  };
+
+  const onSubmit = async (data: FormData) => {
     if (!institucionSeleccionada) {
       Alert.alert('Error', 'Selecciona una institución');
       return;
     }
-    Alert.alert('¡Éxito!', 'Autoridad registrada correctamente', [
-      { text: 'OK', onPress: () => setPaso(0) }
-    ]);
+
+    if (!token) {
+      Alert.alert('Error', 'No estás autenticado.');
+      return;
+    }
+
+    setSubmitting(true);
+
+    try {
+      await createAutoridad(
+        {
+          nombre: data.nombreCompleto,
+          correo: data.correo,
+          cargo: data.cargo,
+          contrasena: data.contrasena,
+          confirmacion_contrasena: data.confirmarContrasena,
+          id_institucion: institucionSeleccionada,
+        },
+        token,
+      );
+
+      Alert.alert('¡Éxito!', 'Autoridad registrada correctamente', [
+        {
+          text: 'OK',
+          onPress: () => {
+            reset();
+            setPaso(0);
+            setInstitucionSeleccionada('');
+          },
+        },
+      ]);
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : 'No se pudo crear la autoridad.';
+      Alert.alert('Error', message);
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -101,9 +166,14 @@ export default function RegisterAutoridadScreen() {
         <View style={styles.stepper}>
           {PASOS.map((label, i) => (
             <View key={i} style={styles.stepItem}>
-              <Text style={[styles.stepLabel, i === paso && styles.stepLabelActive]}>
-                {label}
-              </Text>
+              <TouchableOpacity
+                disabled={i >= paso}
+                onPress={() => i < paso && setPaso(i)}
+              >
+                <Text style={[styles.stepLabel, i === paso && styles.stepLabelActive]}>
+                  {label}
+                </Text>
+              </TouchableOpacity>
               <View style={[styles.stepUnderline, i !== paso && { backgroundColor: 'transparent' }]} />
             </View>
           ))}
@@ -112,6 +182,12 @@ export default function RegisterAutoridadScreen() {
 
       {/* Card */}
       <View style={styles.card}>
+
+        {paso > 0 && (
+          <TouchableOpacity style={styles.backButton} onPress={anteriorPaso}>
+            <Text style={styles.backButtonText}>← Volver</Text>
+          </TouchableOpacity>
+        )}
 
         {/* PASO 1 - Datos */}
         {paso === 0 && (
@@ -126,7 +202,7 @@ export default function RegisterAutoridadScreen() {
                     Nombre completo <Text style={styles.required}>*</Text>
                   </Text>
                   <View style={[styles.inputRow, error && styles.inputError]}>
-                    <Text style={styles.inputIcon}>👤</Text>
+                    <Ionicons name="person-outline" size={20} color={ACCENT} style={styles.inputIcon} />
                     <TextInput
                       style={styles.inputFlex}
                       placeholder="Juan Carlos Mamani"
@@ -156,7 +232,7 @@ export default function RegisterAutoridadScreen() {
                     Correo electrónico <Text style={styles.required}>*</Text>
                   </Text>
                   <View style={[styles.inputRow, error && styles.inputError]}>
-                    <Text style={styles.inputIcon}>✉️</Text>
+                    <Ionicons name="mail-outline" size={20} color={ACCENT} style={styles.inputIcon} />
                     <TextInput
                       style={styles.inputFlex}
                       placeholder="autoridad@correo.bo"
@@ -182,7 +258,7 @@ export default function RegisterAutoridadScreen() {
                     Cargo en la institución
                   </Text>
                   <View style={[styles.inputRow, error && styles.inputError]}>
-                    <Text style={styles.inputIcon}>🗂️</Text>
+                    <Ionicons name="briefcase-outline" size={20} color={ACCENT} style={styles.inputIcon} />
                     <TextInput
                       style={styles.inputFlex}
                       placeholder="Ej. Inspector de tráfico"
@@ -220,7 +296,7 @@ export default function RegisterAutoridadScreen() {
                     Contraseña temporal <Text style={styles.required}>*</Text>
                   </Text>
                   <View style={[styles.inputRow, error && styles.inputError]}>
-                    <Text style={styles.inputIcon}>🔒</Text>
+                      <Ionicons name="lock-closed-outline" size={20} color={ACCENT} style={styles.inputIcon} />
                     <TextInput
                       style={styles.inputFlex}
                       placeholder="••••••••"
@@ -231,7 +307,12 @@ export default function RegisterAutoridadScreen() {
                       autoCapitalize="none"
                     />
                     <TouchableOpacity onPress={() => setShowPass(!showPass)}>
-                      <Text style={styles.eye}>{showPass ? '🙈' : '👁️'}</Text>
+                        <Ionicons
+                          name={showPass ? 'eye-off-outline' : 'eye-outline'}
+                          size={20}
+                          color={ACCENT}
+                          style={styles.eye}
+                        />
                     </TouchableOpacity>
                   </View>
                   <View style={styles.indicators}>
@@ -265,7 +346,7 @@ export default function RegisterAutoridadScreen() {
                     Confirmar contraseña <Text style={styles.required}>*</Text>
                   </Text>
                   <View style={[styles.inputRow, error && styles.inputError]}>
-                    <Text style={styles.inputIcon}>🔒</Text>
+                      <Ionicons name="lock-closed-outline" size={20} color={ACCENT} style={styles.inputIcon} />
                     <TextInput
                       style={styles.inputFlex}
                       placeholder="••••••••"
@@ -276,7 +357,12 @@ export default function RegisterAutoridadScreen() {
                       autoCapitalize="none"
                     />
                     <TouchableOpacity onPress={() => setShowConfirm(!showConfirm)}>
-                      <Text style={styles.eye}>{showConfirm ? '🙈' : '👁️'}</Text>
+                        <Ionicons
+                          name={showConfirm ? 'eye-off-outline' : 'eye-outline'}
+                          size={20}
+                          color={ACCENT}
+                          style={styles.eye}
+                        />
                     </TouchableOpacity>
                   </View>
                   {error && <Text style={styles.errorText}>{error.message}</Text>}
@@ -296,39 +382,39 @@ export default function RegisterAutoridadScreen() {
             <Text style={styles.label}>
               Institución <Text style={styles.required}>*</Text>
             </Text>
-            {INSTITUCIONES.map((inst) => (
-              <TouchableOpacity
-                key={inst}
-                style={[styles.institucionRow, institucionSeleccionada === inst && styles.institucionSelected]}
-                onPress={() => setInstitucionSeleccionada(inst)}
-              >
-                <View style={[styles.radio, institucionSeleccionada === inst && styles.radioSelected]} />
-                <Text style={styles.institucionText}>{inst}</Text>
-              </TouchableOpacity>
-            ))}
-
-            <Text style={[styles.label, { marginTop: 20 }]}>Permisos</Text>
-
-            {[
-              { key: 'crearReportes', icon: '✏️', label: 'Crear reportes' },
-              { key: 'editarReportes', icon: '📝', label: 'Editar reportes' },
-              { key: 'eliminarReportes', icon: '🗑️', label: 'Eliminar reportes' },
-              { key: 'programarCierres', icon: '📅', label: 'Programar cierres' },
-            ].map(({ key, icon, label }) => (
-              <View key={key} style={styles.permisoRow}>
-                <Text style={styles.permisoIcon}>{icon}</Text>
-                <Text style={styles.permisoLabel}>{label}</Text>
-                <Switch
-                  value={permisos[key as keyof typeof permisos]}
-                  onValueChange={() => togglePermiso(key as keyof typeof permisos)}
-                  trackColor={{ false: '#ddd', true: PRIMARY }}
-                  thumbColor="#fff"
-                />
+            {loadingInstituciones ? (
+              <View style={styles.loadingContainer}>
+                <ActivityIndicator color={PRIMARY} />
               </View>
-            ))}
+            ) : instituciones.length > 0 ? (
+              instituciones.map((inst) => (
+                <TouchableOpacity
+                  key={inst.id_institucion}
+                  style={[
+                    styles.institucionRow,
+                    institucionSeleccionada === inst.id_institucion && styles.institucionSelected,
+                  ]}
+                  onPress={() => setInstitucionSeleccionada(inst.id_institucion)}
+                >
+                  <View
+                    style={[
+                      styles.radio,
+                      institucionSeleccionada === inst.id_institucion && styles.radioSelected,
+                    ]}
+                  />
+                  <Text style={styles.institucionText}>{inst.nombre}</Text>
+                </TouchableOpacity>
+              ))
+            ) : (
+              <Text style={[styles.label, { marginTop: 16 }]}>No hay instituciones disponibles.</Text>
+            )}
 
-            <TouchableOpacity style={[styles.button, { marginTop: 24 }]} onPress={onSubmit} activeOpacity={0.85}>
-              <Text style={styles.buttonText}>👤 Registrar autoridad</Text>
+            <TouchableOpacity style={[styles.button, { marginTop: 24 }]} onPress={handleSubmit(onSubmit)} activeOpacity={0.85} disabled={submitting}>
+              {submitting ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={styles.buttonText}>Registrar autoridad</Text>
+              )}
             </TouchableOpacity>
           </>
         )}
@@ -379,13 +465,24 @@ const styles = StyleSheet.create({
     paddingRight: 12,
   },
   inputIcon: { paddingHorizontal: 12, fontSize: 16 },
+  eye: { padding: 10 },
   inputFlex: { flex: 1, padding: 14, fontSize: 15, color: '#1E1E2E' },
   inputError: { borderColor: '#E53935', backgroundColor: '#FFF5F5' },
-  eye: { fontSize: 16 },
   errorText: { color: '#E53935', fontSize: 12, marginTop: 5 },
   indicators: { marginTop: 8, gap: 4 },
   indicator: { color: '#aaa', fontSize: 12 },
   indicatorOk: { color: PRIMARY },
+  loadingContainer: {
+    paddingVertical: 18,
+    alignItems: 'center',
+  },
+  backButton: {
+    marginBottom: 12,
+    alignSelf: 'flex-start',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  backButtonText: { color: ACCENT, fontWeight: '600' },
   button: {
     backgroundColor: PRIMARY,
     padding: 17,

@@ -1,2 +1,2 @@
-import RegisterAutoridadScreen from "@/src/features/auth/screens/RegisterAutoridadScreen";
-export default RegisterAutoridadScreen;
+import AdminScreen from "@/features/admin/screens/AdminScreen";
+export default AdminScreen;
