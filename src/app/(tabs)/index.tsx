@@ -37,6 +37,7 @@ import { useAlertsStore } from '@/shared/store/alertsStore';
 const PRIMARY = '#5B3FD9';
 const LOCATION_FAB_BOTTOM_OFFSET = 8;
 const DEFAULT_SEVERITIES: Incident['severity'][] = [];
+const INCIDENTS_POLL_INTERVAL_MS = 15_000;
 
 const DEFAULT_REGION: Region = {
   latitude: -17.3935,
@@ -501,92 +502,120 @@ export default function MapHomeScreen() {
     }
   }, [selectedSearchPreview]);
 
-  useEffect(() => {
-    let locationSubscription: Location.LocationSubscription | null = null;
-    let cancelled = false;
+useEffect(() => {
+  let locationSubscription: Location.LocationSubscription | null = null;
+  let cancelled = false;
 
-    const loadMapData = async () => {
-      setLoading(true);
-      setInfoMessage(null);
+  // ✅ Función de recarga inteligente en segundo plano
+  const fetchIncidents = async () => {
+    try {
+      const activeIncidents = await fetchActiveIncidents();
+      if (cancelled) return;
+
+      setIncidents((prev) => {
+        const prevMap = new Map(prev.map((i) => [i.id, i]));
+        const nextIds = new Set(activeIncidents.map((i) => i.id));
+
+        const hasNew = activeIncidents.some((i) => !prevMap.has(i.id));
+        const hasRemoved = prev.some((i) => !nextIds.has(i.id));
+        const hasUpdated = activeIncidents.some((next) => {
+          const existing = prevMap.get(next.id);
+          return existing && (
+            existing.status !== next.status ||
+            existing.severity !== next.severity ||
+            existing.title !== next.title ||
+            existing.description !== next.description
+          );
+        });
+
+        if (!hasNew && !hasRemoved && !hasUpdated) return prev;
+
+        syncAlertsFromIncidents(activeIncidents, userCoordinate);
+        return activeIncidents;
+      });
+    } catch {
+      // silencioso para no interrumpir al usuario
+    }
+  };
+
+  // Carga inicial (igual que antes)
+  const loadMapData = async () => {
+    setLoading(true);
+    setInfoMessage(null);
+
+    try {
+      const activeIncidents = await fetchActiveIncidents();
+      if (cancelled) return;
+
+      setIncidents(activeIncidents);
+      syncAlertsFromIncidents(activeIncidents, null);
+
+      const locationPermission = await Location.requestForegroundPermissionsAsync();
+      if (cancelled || locationPermission.status !== 'granted') return;
 
       try {
-        const activeIncidents = await fetchActiveIncidents();
+        const position = await Location.getCurrentPositionAsync({
+          accuracy: Location.Accuracy.Balanced,
+        });
+        if (cancelled) return;
 
-        if (cancelled) {
-          return;
-        }
+        setUserCoordinate({
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude,
+        });
 
-        setIncidents(activeIncidents);
-        syncAlertsFromIncidents(activeIncidents, null);
+        void resolveSearchArea(position.coords.latitude, position.coords.longitude)
+          .then((area) => setUserSearchArea(area))
+          .catch(() => undefined);
 
-        const locationPermission = await Location.requestForegroundPermissionsAsync();
+        syncAlertsFromIncidents(activeIncidents, {
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude,
+        });
 
-        if (cancelled || locationPermission.status !== 'granted') {
-          return;
-        }
-
-        try {
-          const position = await Location.getCurrentPositionAsync({
+        locationSubscription = await Location.watchPositionAsync(
+          {
             accuracy: Location.Accuracy.Balanced,
-          });
-
-          if (cancelled) {
-            return;
+            timeInterval: 4000,
+            distanceInterval: 5,
+          },
+          ({ coords }) => {
+            setUserCoordinate({
+              latitude: coords.latitude,
+              longitude: coords.longitude,
+            });
           }
-
-          setUserCoordinate({
-            latitude: position.coords.latitude,
-            longitude: position.coords.longitude,
-          });
-
-          void resolveSearchArea(position.coords.latitude, position.coords.longitude)
-            .then((area) => setUserSearchArea(area))
-            .catch(() => undefined);
-
-          syncAlertsFromIncidents(activeIncidents, {
-            latitude: position.coords.latitude,
-            longitude: position.coords.longitude,
-          });
-
-          locationSubscription = await Location.watchPositionAsync(
-            {
-              accuracy: Location.Accuracy.Balanced,
-              timeInterval: 4000,
-              distanceInterval: 5,
-            },
-            ({ coords }) => {
-              setUserCoordinate({
-                latitude: coords.latitude,
-                longitude: coords.longitude,
-              });
-            }
-          );
-        } catch {
-          if (!cancelled) {
-            setInfoMessage('No se pudo obtener tu ubicacion ahora. Intenta nuevamente.');
-          }
-        }
-      } catch (error) {
-        if (error instanceof ConnectivityError) {
-          setInfoMessage(error.message);
-          setIncidents([]);
-        } else {
-          setInfoMessage(error instanceof Error ? error.message : 'No fue posible cargar los reportes en este momento.');
-        }
-      } finally {
+        );
+      } catch {
         if (!cancelled) {
-          setLoading(false);
+          setInfoMessage('No se pudo obtener tu ubicacion ahora. Intenta nuevamente.');
         }
       }
-    };
+    } catch (error) {
+      if (error instanceof ConnectivityError) {
+        setInfoMessage(error.message);
+        setIncidents([]);
+      } else {
+        setInfoMessage(error instanceof Error ? error.message : 'No fue posible cargar los reportes en este momento.');
+      }
+    } finally {
+      if (!cancelled) setLoading(false);
+    }
+  };
 
-    loadMapData();
+  loadMapData();
 
-    return () => {
-      cancelled = true;
-      locationSubscription?.remove();
-    };
-  }, []);
+  // ✅ Polling cada 15 segundos
+  const pollInterval = setInterval(() => {
+    void fetchIncidents();
+  }, INCIDENTS_POLL_INTERVAL_MS);
+
+  return () => {
+    cancelled = true;
+    locationSubscription?.remove();
+    clearInterval(pollInterval); // ✅ limpia al salir de la pantalla
+  };
+}, []);
 
   const incidentCounts = useMemo(() => {
     const initialCounts = INCIDENT_TYPES.reduce((accumulator, type) => {
