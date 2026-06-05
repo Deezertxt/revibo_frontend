@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
 import { useRouter } from "expo-router";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -35,16 +35,39 @@ export default function PasoImagenes({
   const accessToken = useAuthStore((state) => state.accessToken);
 
   const [loading, setLoading] = useState(false);
-  const [imagenesLocales, setImagenesLocales] = useState<string[]>([]);
   const [imagenesRemotas, setImagenesRemotas] = useState<string[]>([]);
 
-  useEffect(() => {
-    if (store.url_imagen && Array.isArray(store.url_imagen)) {
-      setImagenesRemotas(store.url_imagen);
-    }
-  }, [store.url_imagen]);
+  const inicializado = useRef(false);
 
+  const imagenesLocales = store.url_imagen || [];
   const totalImagenes = imagenesLocales.length + imagenesRemotas.length;
+
+  useEffect(() => {
+    if (!inicializado.current && store.reporteSeleccionado) {
+      const fotosBackend =
+        store.reporteSeleccionado.imagenes ||
+        store.reporteSeleccionado.url_imagen ||
+        [];
+
+      const listaFotos = Array.isArray(fotosBackend)
+        ? fotosBackend
+        : fotosBackend
+          ? [fotosBackend]
+          : [];
+
+      const remotas = listaFotos.filter(
+        (url: string) => typeof url === "string" && url.startsWith("http"),
+      );
+      setImagenesRemotas(remotas);
+      store.updateData({ url_imagen: [] });
+
+      inicializado.current = true;
+    }
+
+    return () => {
+      store.updateData({ url_imagen: [] });
+    };
+  }, [store.reporteSeleccionado]);
 
   const seleccionarImagen = async () => {
     if (totalImagenes >= 5) {
@@ -68,20 +91,37 @@ export default function PasoImagenes({
       quality: 0.7,
     });
 
-    if (!result.canceled) {
-      setImagenesLocales([...imagenesLocales, result.assets[0].uri]);
+    if (!result.canceled && result.assets && result.assets[0]) {
+      store.updateData({
+        url_imagen: [...imagenesLocales, result.assets[0].uri],
+      });
     }
   };
 
   const eliminarImagenLocal = (indexAEliminar: number) => {
-    setImagenesLocales(
-      imagenesLocales.filter((_, index) => index !== indexAEliminar),
-    );
+    store.updateData({
+      url_imagen: imagenesLocales.filter(
+        (_, index) => index !== indexAEliminar,
+      ),
+    });
   };
 
   const eliminarImagenRemota = (indexAEliminar: number) => {
-    setImagenesRemotas(
-      imagenesRemotas.filter((_, index) => index !== indexAEliminar),
+    Alert.alert(
+      "¿Eliminar imagen guardada?",
+      "Esta foto ya forma parte del reporte. Si guardas los cambios, se eliminará de forma permanente.",
+      [
+        { text: "Cancelar", style: "cancel" },
+        {
+          text: "Eliminar",
+          style: "destructive",
+          onPress: () => {
+            setImagenesRemotas((prev) =>
+              prev.filter((_, index) => index !== indexAEliminar),
+            );
+          },
+        },
+      ],
     );
   };
 
@@ -126,10 +166,18 @@ export default function PasoImagenes({
           {
             text: "Aceptar",
             onPress: () => {
-              setImagenesLocales([]);
-              setImagenesRemotas([]);
+              if (store.reporteSeleccionado) {
+                store.updateData({
+                  reporteSeleccionado: {
+                    ...store.reporteSeleccionado,
+                    imagenes: urlsFinales,
+                    url_imagen: urlsFinales,
+                  },
+                });
+              }
 
-              store.limpiarReporteSeleccionado();
+              setImagenesRemotas([]);
+              store.updateData({ url_imagen: [] });
               store.reset();
 
               if (alFinalizar) {
@@ -191,7 +239,6 @@ export default function PasoImagenes({
         </Text>
 
         <View style={styles.imageGrid}>
-          {/* Remotas (Existentes en la nube) */}
           {imagenesRemotas.map((uri, index) => (
             <View key={`remote-${index}`} style={styles.imageCard}>
               <Image source={{ uri }} style={styles.imagePreview} />
@@ -205,7 +252,6 @@ export default function PasoImagenes({
             </View>
           ))}
 
-          {/* Locales (Nuevas de la galería de esta sesión) */}
           {imagenesLocales.map((uri, index) => (
             <View key={`local-${index}`} style={styles.imageCard}>
               <Image source={{ uri }} style={styles.imagePreview} />
@@ -320,10 +366,7 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 30,
     marginTop: 10,
   },
-  scrollContent: {
-    padding: 20,
-    paddingBottom: 30,
-  },
+  scrollContent: { padding: 20, paddingBottom: 30 },
   sectionTitle: {
     fontSize: 16,
     fontWeight: "700",
@@ -337,12 +380,7 @@ const styles = StyleSheet.create({
     gap: 12,
     marginBottom: 8,
   },
-  imageCard: {
-    width: 95,
-    height: 95,
-    borderRadius: 16,
-    position: "relative",
-  },
+  imageCard: { width: 95, height: 95, borderRadius: 16, position: "relative" },
   imagePreview: {
     width: "100%",
     height: "100%",
@@ -377,18 +415,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
     backgroundColor: "#F8F7FF",
   },
-  addText: {
-    fontSize: 12,
-    color: "#6347D1",
-    fontWeight: "600",
-    marginTop: 4,
-  },
-  imageCount: {
-    fontSize: 12,
-    color: "#AAA",
-    marginBottom: 22,
-    paddingLeft: 2,
-  },
+  addText: { fontSize: 12, color: "#6347D1", fontWeight: "600", marginTop: 4 },
+  imageCount: { fontSize: 12, color: "#AAA", marginBottom: 22, paddingLeft: 2 },
   summaryCard: {
     backgroundColor: "#F8F9FD",
     borderRadius: 20,
@@ -404,12 +432,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: "#EAECEF",
   },
-  summaryLabel: {
-    fontSize: 14,
-    color: "#666",
-    fontWeight: "500",
-    flex: 1,
-  },
+  summaryLabel: { fontSize: 14, color: "#666", fontWeight: "500", flex: 1 },
   summaryValue: {
     fontSize: 14,
     color: "#222",
@@ -436,14 +459,8 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     backgroundColor: "#FFF",
   },
-  badgeTextGravedad: {
-    fontSize: 13,
-    fontWeight: "700",
-  },
-  footer: {
-    padding: 20,
-    backgroundColor: "#FFF",
-  },
+  badgeTextGravedad: { fontSize: 13, fontWeight: "700" },
+  footer: { padding: 20, backgroundColor: "#FFF" },
   publishBtn: {
     backgroundColor: "#6347D1",
     flexDirection: "row",
@@ -459,25 +476,14 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.2,
     shadowRadius: 5,
   },
-  publishText: {
-    color: "white",
-    fontSize: 16,
-    fontWeight: "700",
-  },
-  ubicacionDetalleContainer: {
-    flex: 1.8,
-    alignItems: "flex-end",
-  },
+  publishText: { color: "white", fontSize: 16, fontWeight: "700" },
+  ubicacionDetalleContainer: { flex: 1.8, alignItems: "flex-end" },
   tipoUbicacionRow: {
     flexDirection: "row",
     alignItems: "center",
     marginBottom: 4,
   },
-  tipoUbicacionText: {
-    fontSize: 12,
-    fontWeight: "700",
-    color: "#6347D1",
-  },
+  tipoUbicacionText: { fontSize: 12, fontWeight: "700", color: "#6347D1" },
   direccionTextoDisplay: {
     fontSize: 14,
     color: "#333",

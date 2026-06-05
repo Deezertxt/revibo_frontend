@@ -2,6 +2,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import React, { useEffect } from "react";
 import {
+  Alert,
   BackHandler,
   StatusBar,
   StyleSheet,
@@ -20,21 +21,33 @@ export default function CrearReporteFeature() {
   const router = useRouter();
   const step = useCrearReporteStore((state) => state.step);
   const setStep = useCrearReporteStore((state) => state.setStep);
-
   const limpiarStore = useCrearReporteStore((state) => state.limpiarStore);
 
   const titles = ["Información", "Ubicación", "Resumen"];
 
-  const salirAlMenu = () => {
-    limpiarStore();
-    router.push("/(tabs)/reportes_menu");
+  const confirmarSalida = () => {
+    Alert.alert(
+      "¿Abandonar reporte?",
+      "Si sales ahora, se borrarán todos los datos que hayas introducido para este nuevo reporte.",
+      [
+        { text: "Continuar llenando", style: "cancel" },
+        {
+          text: "Salir y borrar",
+          style: "destructive",
+          onPress: () => {
+            limpiarStore();
+            router.push("/(tabs)/reportes_menu");
+          },
+        },
+      ],
+    );
   };
 
   const handleBack = () => {
     if (step > 0) {
       setStep(step - 1);
     } else {
-      salirAlMenu();
+      confirmarSalida();
     }
   };
 
@@ -44,7 +57,7 @@ export default function CrearReporteFeature() {
         setStep(step - 1);
         return true;
       } else {
-        salirAlMenu();
+        confirmarSalida();
         return true;
       }
     };

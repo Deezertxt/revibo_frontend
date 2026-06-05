@@ -28,10 +28,12 @@ export default function PasoImagenes() {
   const store = useCrearReporteStore();
   const accessToken = useAuthStore((state) => state.accessToken);
   const [loading, setLoading] = useState(false);
-  const [imagenesLocales, setImagenesLocales] = useState<string[]>([]);
+
+  // Leemos las imágenes directamente desde el store global
+  const imagenesGlobales = store.url_imagen || [];
 
   const seleccionarImagen = async () => {
-    if (imagenesLocales.length >= 5) {
+    if (imagenesGlobales.length >= 5) {
       Alert.alert(
         "Límite alcanzado",
         "Solo puedes subir un máximo de 5 imágenes.",
@@ -56,14 +58,20 @@ export default function PasoImagenes() {
     });
 
     if (!result.canceled) {
-      setImagenesLocales([...imagenesLocales, result.assets[0].uri]);
+      // Guardamos la nueva URI local en el store global
+      store.updateData({
+        url_imagen: [...imagenesGlobales, result.assets[0].uri],
+      });
     }
   };
 
   const eliminarImagenLocal = (indexAEliminar: number) => {
-    setImagenesLocales(
-      imagenesLocales.filter((_, index) => index !== indexAEliminar),
-    );
+    // Actualizamos el store global filtrando la imagen eliminada
+    store.updateData({
+      url_imagen: imagenesGlobales.filter(
+        (_, index) => index !== indexAEliminar,
+      ),
+    });
   };
 
   const publicar = async () => {
@@ -89,8 +97,9 @@ export default function PasoImagenes() {
 
     try {
       let urlsDeInternet: string[] = [];
-      if (imagenesLocales.length > 0) {
-        const promesasSubida = imagenesLocales.map((uri) =>
+      // Subimos a Cloudinary las URIs locales almacenadas en el store
+      if (imagenesGlobales.length > 0) {
+        const promesasSubida = imagenesGlobales.map((uri) =>
           uploadImageToCloudinary(uri),
         );
         urlsDeInternet = await Promise.all(promesasSubida);
@@ -113,7 +122,6 @@ export default function PasoImagenes() {
         {
           text: "Volver al inicio",
           onPress: () => {
-            setImagenesLocales([]);
             store.reset();
           },
         },
@@ -177,7 +185,7 @@ export default function PasoImagenes() {
         </Text>
 
         <View style={styles.imageGrid}>
-          {imagenesLocales.map((uri, index) => (
+          {imagenesGlobales.map((uri, index) => (
             <View key={index} style={styles.imageCard}>
               <Image source={{ uri }} style={styles.imagePreview} />
               <TouchableOpacity
@@ -190,7 +198,7 @@ export default function PasoImagenes() {
             </View>
           ))}
 
-          {imagenesLocales.length < 5 && (
+          {imagenesGlobales.length < 5 && (
             <TouchableOpacity
               style={styles.addCard}
               onPress={seleccionarImagen}
@@ -202,7 +210,7 @@ export default function PasoImagenes() {
           )}
         </View>
         <Text style={styles.imageCount}>
-          {imagenesLocales.length} de 5 imágenes cargadas.
+          {imagenesGlobales.length} de 5 imágenes cargadas.
         </Text>
 
         <Text style={styles.sectionTitle}>Resumen del reporte</Text>
