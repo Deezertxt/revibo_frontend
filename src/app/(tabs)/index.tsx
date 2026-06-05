@@ -46,6 +46,8 @@ type IncidentFilter = 'todos' | IncidentType;
 
 type SearchParams = {
   routeId?: string | string[];
+  lat?: string;
+  lng?: string;
 };
 
 export default function MapHomeScreen() {
@@ -417,6 +419,26 @@ export default function MapHomeScreen() {
     openIncidentDetail(alertIncident);
     consumeSelectedAlert();
   }, [consumeSelectedAlert, incidents, openIncidentDetail, selectedAlertId]);
+
+  // Center on coordinates from params (used by admin to center on reports)
+  useEffect(() => {
+    const lat = params.lat ? parseFloat(params.lat as string) : null;
+    const lng = params.lng ? parseFloat(params.lng as string) : null;
+
+    if (!lat || !lng || !Number.isFinite(lat) || !Number.isFinite(lng)) {
+      return;
+    }
+
+    mapRef.current?.animateToRegion(
+      {
+        latitude: lat - 0.004,
+        longitude: lng,
+        latitudeDelta: 0.012,
+        longitudeDelta: 0.012,
+      },
+      450
+    );
+  }, [params.lat, params.lng]);
 
   // Search suggestions (Nominatim) with debounce
   useEffect(() => {
