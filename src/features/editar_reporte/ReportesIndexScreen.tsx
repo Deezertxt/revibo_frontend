@@ -20,6 +20,24 @@ import { useEditarReporteStore } from "./store/editarReporteStore";
 
 import EditarReporteFeature from "./index";
 
+async function obtenerNombreCalle(lat: number, lng: number): Promise<string> {
+  try {
+    const response = await fetch(
+      `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}`,
+      { headers: { "User-Agent": "ReviboApp" } },
+    );
+    const data = await response.json();
+    return (
+      data.address?.road ||
+      data.address?.suburb ||
+      data.display_name ||
+      "Ubicación desconocida"
+    );
+  } catch (error) {
+    return "Ubicación no especificada";
+  }
+}
+
 export default function ReportesIndexScreen() {
   const router = useRouter();
   const reporteSeleccionado = useEditarReporteStore(
@@ -77,7 +95,25 @@ export default function ReportesIndexScreen() {
 
     try {
       const data = await obtenerReportes(accessToken);
-      setReportes(Array.isArray(data) ? data : []);
+      const listaReportes = Array.isArray(data) ? data : [];
+
+      const reportesConCalle = await Promise.all(
+        listaReportes.map(async (reporte) => {
+          if (reporte.geom && reporte.geom.type === "Point") {
+            const [lng, lat] = reporte.geom.coordinates;
+            const calle = await obtenerNombreCalle(lat, lng);
+            return { ...reporte, direccionTexto: calle };
+          }
+          if (reporte.geom && reporte.geom.type === "LineString") {
+            const [lng, lat] = reporte.geom.coordinates[0];
+            const calle = await obtenerNombreCalle(lat, lng);
+            return { ...reporte, direccionTexto: calle };
+          }
+          return reporte;
+        }),
+      );
+
+      setReportes(reportesConCalle);
     } catch (err: any) {
       setError(err.message || "Ocurrió un error al cargar los reportes.");
     } finally {
@@ -180,12 +216,12 @@ export default function ReportesIndexScreen() {
               }
               renderItem={({ item }) => (
                 <ReporteCard
-                  item={item}
-                  onPressEditar={() => {
-                    setTimeout(() => {
-                      cargarReporteParaEditar(item);
-                    }, 50);
+                  item={{
+                    ...item,
+                    es_tramo: item.geom?.type === "LineString",
+                    coordenadas_trazo: item.geom?.coordinates,
                   }}
+                  onPressEditar={() => cargarReporteParaEditar(item)}
                 />
               )}
             />
