@@ -22,7 +22,7 @@ function obtenerFechaActualBackend(): string {
   const ahora = new Date();
 
   const dia = String(ahora.getDate()).padStart(2, "0");
-  const mes = String(ahora.getMonth() + 1).padStart(2, "0"); // Enero es 0
+  const mes = String(ahora.getMonth() + 1).padStart(2, "0");
   const anio = ahora.getFullYear();
 
   const hora = String(ahora.getHours()).padStart(2, "0");
@@ -69,7 +69,7 @@ function formatearFechaEstricta(fechaInput: any): string | null {
 }
 
 export async function obtenerReportes(token: string): Promise<any[]> {
-  const response = await fetch(`${API_URL}/reporte`, {
+  const response = await fetch(`${API_URL}/reporte/user`, {
     method: "GET",
     headers: {
       Accept: "application/json",

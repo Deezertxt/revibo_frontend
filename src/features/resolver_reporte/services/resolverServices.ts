@@ -7,7 +7,7 @@ const API_URL = BASE_URL.replace(/\/$/, "");
 export async function obtenerReportesParaResolver(
   token: string,
 ): Promise<any[]> {
-  const response = await fetch(`${API_URL}/reporte`, {
+  const response = await fetch(`${API_URL}/reporte/user`, {
     method: "GET",
     headers: {
       Accept: "application/json",

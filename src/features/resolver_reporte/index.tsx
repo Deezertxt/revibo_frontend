@@ -144,14 +144,14 @@ export default function ResolverReporteScreen() {
           <TouchableOpacity onPress={handleBack} style={styles.backButton}>
             <Ionicons name="arrow-back" size={24} color="#FFF" />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>Resolver Reporte</Text>
+          <Text style={styles.headerTitle}>Resuelve tus Reportes</Text>
         </View>
         <TouchableOpacity
           style={styles.syncButton}
           onPress={cargarReportes}
           activeOpacity={0.7}
         >
-          <Ionicons name="refresh" size={22} color="#FFF" />
+          <Ionicons name="refresh" size={20} color="#FFF" />
         </TouchableOpacity>
       </View>
 
@@ -214,11 +214,11 @@ const styles = StyleSheet.create({
     marginLeft: -4,
   },
   headerTitle: {
-    fontSize: 26,
+    fontSize: 24,
     fontWeight: "bold",
     color: "#FFF",
   },
-  screenSubtitle: {
+  headerSubtitle: {
     fontSize: 11,
     fontWeight: "700",
     color: "rgba(255, 255, 255, 0.7)",

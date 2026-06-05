@@ -156,7 +156,8 @@ export default function ReportesIndexScreen() {
               <TouchableOpacity onPress={handleBack} style={styles.backButton}>
                 <Ionicons name="arrow-back" size={24} color="#FFF" />
               </TouchableOpacity>
-              <Text style={styles.headerTitle}>Editar Reporte</Text>
+              <Text style={styles.headerTitle}>Edita tus reportes</Text>
+              <Text style={styles.headerSubtitle}></Text>
             </View>
             <TouchableOpacity
               style={styles.syncButton}
