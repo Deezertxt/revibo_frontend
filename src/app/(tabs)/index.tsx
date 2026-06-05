@@ -6,29 +6,29 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import type { RefObject } from 'react';
 import { Fragment, memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-    ActivityIndicator,
-    Pressable,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    View,
+  ActivityIndicator,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
 } from 'react-native';
 import MapView, { Marker, Polyline, Region } from 'react-native-maps';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import {
-    ConnectivityError,
-    fetchActiveIncidents,
+  ConnectivityError,
+  fetchActiveIncidents,
 } from '@/features/incidents/incidents.service';
 import {
-    INCIDENT_SEVERITY_LABELS,
-    INCIDENT_STATUS_LABELS,
-    INCIDENT_TYPES,
-    INCIDENT_TYPE_COLORS,
-    INCIDENT_TYPE_LABELS,
-    Incident,
-    IncidentType,
+  INCIDENT_SEVERITY_LABELS,
+  INCIDENT_STATUS_LABELS,
+  INCIDENT_TYPES,
+  INCIDENT_TYPE_COLORS,
+  INCIDENT_TYPE_LABELS,
+  Incident,
+  IncidentType,
 } from '@/features/incidents/types';
 import { getSavedMapRegion, setSavedMapRegion } from '@/features/map/map-view-state';
 import { useRoutesStore } from '@/features/rutas/store/rutasStore';
@@ -703,16 +703,18 @@ export default function MapHomeScreen() {
 
     let cancelled = false;
     const controller = new AbortController();
+    const searchVariants = buildSearchVariants(searchQuery).slice(0, 3);
 
-    const buildSearchUrl = (mode: 'nearby' | 'city' | 'department' | 'fallback') => {
+    const buildSearchUrl = (queryText: string, mode: 'nearby' | 'global') => {
       const params = new URLSearchParams({
         format: 'jsonv2',
-        q: searchQuery,
+        q: queryText,
         addressdetails: '1',
-        limit: '10',
+        limit: '8',
         countrycodes: 'bo',
         'accept-language': 'es',
         polygon_geojson: '1',
+        dedupe: '1',
       });
 
       if (mode === 'nearby' && userCoordinate) {
@@ -725,14 +727,6 @@ export default function MapHomeScreen() {
 
         params.set('viewbox', `${left},${top},${right},${bottom}`);
         params.set('bounded', '1');
-      }
-
-      if (mode === 'city' && userSearchArea?.city) {
-        params.set('city', userSearchArea.city);
-      }
-
-      if (mode === 'department' && userSearchArea?.department) {
-        params.set('state', userSearchArea.department);
       }
 
       return `https://nominatim.openstreetmap.org/search?${params.toString()}`;
@@ -775,8 +769,8 @@ export default function MapHomeScreen() {
         setLoadingSuggestions(true);
         setSearchErrorMessage(null);
 
-        const fetchSuggestions = async (mode: 'nearby' | 'city' | 'department' | 'fallback') => {
-          const res = await fetch(buildSearchUrl(mode), {
+        const fetchSuggestions = async (queryText: string, mode: 'nearby' | 'global') => {
+          const res = await fetch(buildSearchUrl(queryText, mode), {
             signal: controller.signal,
             headers: {
               Accept: 'application/json',
@@ -793,27 +787,18 @@ export default function MapHomeScreen() {
           return normalizeNominatimPayload(data);
         };
 
-        const collectedResults: NominatimSuggestion[] = [];
+        const requestPlans: Array<Promise<NominatimSuggestion[]>> = [];
 
         if (userCoordinate) {
-          const nearbyResults = await fetchSuggestions('nearby');
-          collectedResults.push(...nearbyResults);
+          requestPlans.push(fetchSuggestions(searchVariants[0] ?? searchQuery, 'nearby'));
         }
 
-        if (collectedResults.length < 10 && userSearchArea?.city) {
-          const cityResults = await fetchSuggestions('city');
-          collectedResults.splice(0, collectedResults.length, ...mergeUniqueSuggestions(collectedResults, cityResults));
+        for (const variant of searchVariants) {
+          requestPlans.push(fetchSuggestions(variant, 'global'));
         }
 
-        if (collectedResults.length < 10 && userSearchArea?.department) {
-          const departmentResults = await fetchSuggestions('department');
-          collectedResults.splice(0, collectedResults.length, ...mergeUniqueSuggestions(collectedResults, departmentResults));
-        }
-
-        if (collectedResults.length < 10) {
-          const BoliviaResults = await fetchSuggestions('fallback');
-          collectedResults.splice(0, collectedResults.length, ...mergeUniqueSuggestions(collectedResults, BoliviaResults));
-        }
+        const resultSets = await Promise.all(requestPlans);
+        const collectedResults = mergeUniqueSuggestions([], resultSets.flat());
 
         if (cancelled) return;
 
@@ -1080,7 +1065,7 @@ export default function MapHomeScreen() {
               </View>
             ) : null}
 
-            <Text style={styles.descriptionText}>{selectedIncident.description}</Text>
+            <Text style={(styles as any).descriptionText}>{selectedIncident.description}</Text>
 
             {selectedIncident.imageUrls && selectedIncident.imageUrls.length > 0 ? (
               <View style={styles.imagesSection}>
@@ -1099,7 +1084,7 @@ export default function MapHomeScreen() {
 
             {selectedIncident.status !== 'resuelto' ? (
               <Pressable
-                style={styles.routeButton}
+                style={(styles as any).routeButton}
                 onPress={() =>
                   router.push({
                     pathname: '/(tabs)/rutas',
@@ -1114,7 +1099,7 @@ export default function MapHomeScreen() {
                 <MaterialIcons name="arrow-forward" size={18} color="#FFFFFF" />
               </Pressable>
             ) : (
-              <Pressable style={[styles.routeButton, styles.routeButtonDisabled]} disabled>
+              <Pressable style={[(styles as any).routeButton, styles.routeButtonDisabled]} disabled>
                 <Text style={styles.routeButtonText}>Reporte resuelto</Text>
               </Pressable>
             )}
@@ -1182,6 +1167,50 @@ function normalizeSearchText(value: string): string {
     .toLowerCase()
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '');
+}
+
+function collapseSearchQuery(value: string): string {
+  return value.trim().replace(/\s+/g, ' ');
+}
+
+function splitIntersectionQuery(value: string): { left: string; right: string } | null {
+  const cleaned = collapseSearchQuery(value);
+
+  const patterns = [
+    /^(.+?)\s+(?:esquina|cruce|interseccion|intersección|intersection)\s+(.+)$/i,
+    /^(.+?)\s+(?:y|e|con)\s+(.+)$/i,
+    /^(.+?)\s*[\/&+\-]\s*(.+)$/i,
+  ];
+
+  for (const pattern of patterns) {
+    const match = cleaned.match(pattern);
+
+    if (!match) {
+      continue;
+    }
+
+    const left = match[1]?.trim();
+    const right = match[2]?.trim();
+
+    if (left && right && left.length >= 3 && right.length >= 3) {
+      return { left, right };
+    }
+  }
+
+  return null;
+}
+
+function buildSearchVariants(query: string): string[] {
+  const cleaned = collapseSearchQuery(query);
+  const variants = new Set<string>([cleaned]);
+  const intersection = splitIntersectionQuery(cleaned);
+
+  if (intersection) {
+    variants.add(`${intersection.left} esquina ${intersection.right}`);
+    variants.add(`${intersection.left} con ${intersection.right}`);
+  }
+
+  return [...variants].filter((item) => item.length > 0);
 }
 
 function normalizeNominatimPayload(payload: unknown): NominatimSuggestion[] {
@@ -1425,7 +1454,12 @@ function rankNominatimSuggestions(
     let score = 0;
 
     if (display.includes(normalizedQuery)) score += 120;
+    if (display.startsWith(normalizedQuery)) score += 70;
+    if (road === normalizedQuery) score += 220;
+    if (road.startsWith(normalizedQuery)) score += 160;
     if (road.includes(normalizedQuery)) score += 150;
+    if (junction === normalizedQuery) score += 200;
+    if (junction.startsWith(normalizedQuery)) score += 150;
     if (junction.includes(normalizedQuery)) score += 140;
     if (city.includes(normalizedQuery)) score += 40;
 
@@ -1684,6 +1718,7 @@ const styles = StyleSheet.create({
   suggestionSubtitle: {
     color: '#7D7891',
     fontSize: 12,
+  },
   emptySuggestionState: {
     paddingHorizontal: 12,
     paddingVertical: 14,
@@ -1700,6 +1735,8 @@ const styles = StyleSheet.create({
     lineHeight: 17,
     fontWeight: '600',
   },
+  filterModalOverlay: {
+    position: 'absolute',
     top: 0,
     left: 0,
     right: 0,
@@ -2070,6 +2107,23 @@ const styles = StyleSheet.create({
     height: '100%',
     borderRadius: 999,
     backgroundColor: PRIMARY,
+  },
+  descriptionText: {
+    color: '#4C4958',
+    fontSize: 14,
+    lineHeight: 20,
+    fontWeight: '500',
+  },
+  routeButton: {
+    marginTop: 4,
+    backgroundColor: PRIMARY,
+    borderRadius: 14,
+    paddingVertical: 13,
+    paddingHorizontal: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
   },
   routeButtonDisabled: {
     opacity: 0.55,
