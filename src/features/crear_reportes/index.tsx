@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
-import { useRouter } from "expo-router";
-import React, { useEffect } from "react";
+import { useFocusEffect, useRouter } from "expo-router";
+import React, { useCallback, useEffect, useRef } from "react";
 import {
   Alert,
   BackHandler,
@@ -24,6 +24,12 @@ export default function CrearReporteFeature() {
   const limpiarStore = useCrearReporteStore((state) => state.limpiarStore);
 
   const titles = ["Información", "Ubicación", "Resumen"];
+
+  const stepRef = useRef(step);
+
+  useEffect(() => {
+    stepRef.current = step;
+  }, [step]);
 
   const confirmarSalida = () => {
     Alert.alert(
@@ -51,24 +57,26 @@ export default function CrearReporteFeature() {
     }
   };
 
-  useEffect(() => {
-    const backAction = () => {
-      if (step > 0) {
-        setStep(step - 1);
-        return true;
-      } else {
-        confirmarSalida();
-        return true;
-      }
-    };
+  useFocusEffect(
+    useCallback(() => {
+      const backAction = () => {
+        if (stepRef.current > 0) {
+          setStep(stepRef.current - 1);
+          return true;
+        } else {
+          confirmarSalida();
+          return true;
+        }
+      };
 
-    const backHandler = BackHandler.addEventListener(
-      "hardwareBackPress",
-      backAction,
-    );
+      const backHandler = BackHandler.addEventListener(
+        "hardwareBackPress",
+        backAction,
+      );
 
-    return () => backHandler.remove();
-  }, [step]);
+      return () => backHandler.remove();
+    }, []),
+  );
 
   const renderContent = () => {
     switch (step) {
