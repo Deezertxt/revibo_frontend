@@ -58,8 +58,8 @@ export default function PasoUbicacionEditar() {
                 {
                   latitude: lat,
                   longitude: lng,
-                  latitudeDelta: 0.004,
-                  longitudeDelta: 0.004,
+                  latitudeDelta: 0.005,
+                  longitudeDelta: 0.005,
                 },
                 500,
               );
@@ -96,8 +96,8 @@ export default function PasoUbicacionEditar() {
                 {
                   latitude: pA.latitude,
                   longitude: pA.longitude,
-                  latitudeDelta: 0.006,
-                  longitudeDelta: 0.006,
+                  latitudeDelta: 0.005,
+                  longitudeDelta: 0.005,
                 },
                 500,
               );
@@ -106,7 +106,7 @@ export default function PasoUbicacionEditar() {
         } catch (err) {
           console.error(err);
         } finally {
-          setLoadingGPS(false);
+          loadingGPS && setLoadingGPS(false);
         }
         return;
       }
@@ -135,8 +135,8 @@ export default function PasoUbicacionEditar() {
             {
               latitude: latInicial,
               longitude: lngInicial,
-              latitudeDelta: 0.004,
-              longitudeDelta: 0.004,
+              latitudeDelta: 0.005,
+              longitudeDelta: 0.005,
             },
             500,
           );
@@ -327,8 +327,8 @@ export default function PasoUbicacionEditar() {
             {
               latitude: lat,
               longitude: lon,
-              latitudeDelta: 0.004,
-              longitudeDelta: 0.004,
+              latitudeDelta: 0.005,
+              longitudeDelta: 0.005,
             },
             1000,
           );
@@ -356,8 +356,8 @@ export default function PasoUbicacionEditar() {
             initialRegion={{
               latitude: puntoA.latitude,
               longitude: puntoA.longitude,
-              latitudeDelta: esTramo ? 0.008 : 0.005,
-              longitudeDelta: esTramo ? 0.008 : 0.005,
+              latitudeDelta: 0.005,
+              longitudeDelta: 0.005,
             }}
             showsUserLocation={true}
             onPress={handleMapPress}
@@ -391,6 +391,7 @@ export default function PasoUbicacionEditar() {
                 coordinates={coordenadasRutaVisual}
                 strokeColor="#6347D1"
                 strokeWidth={5}
+                lineDashPattern={[0]}
               />
             )}
           </MapView>
@@ -534,6 +535,9 @@ const styles = StyleSheet.create({
     color: "#777",
     fontWeight: "600",
     fontSize: 14,
+  },
+  modeBtnActiveText: {
+    color: "#FFF",
   },
   modeBtnTextActive: {
     color: "#FFF",
