@@ -1,8 +1,10 @@
+import Ionicons from '@expo/vector-icons/Ionicons';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { Image } from 'expo-image';
 import * as Location from 'expo-location';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { RefObject } from 'react';
+import { Fragment, memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Pressable,
@@ -34,6 +36,8 @@ import { useAlertsStore } from '@/shared/store/alertsStore';
 
 const PRIMARY = '#5B3FD9';
 const LOCATION_FAB_BOTTOM_OFFSET = 8;
+const DEFAULT_SEVERITIES: Incident['severity'][] = [];
+const INCIDENTS_POLL_INTERVAL_MS = 15_000;
 
 const DEFAULT_REGION: Region = {
   latitude: -17.3935,
@@ -44,10 +48,255 @@ const DEFAULT_REGION: Region = {
 
 type IncidentFilter = 'todos' | IncidentType;
 
+type IncidentMarkerConfig = {
+  icon: keyof typeof Ionicons.glyphMap;
+  label: string;
+};
+
+type IncidentMapMarkerProps = {
+  incident: Incident;
+  onPress: (incident: Incident) => void;
+};
+
+const INCIDENT_MARKER_CONFIG: Record<IncidentType, IncidentMarkerConfig> = {
+  accidente_vehicular: { icon: 'alert-circle-outline', label: 'Accidente vehicular' },
+  bloqueo: { icon: 'ban-outline', label: 'Bloqueo' },
+  mantenimiento: { icon: 'build-outline', label: 'Mantenimiento' },
+  cierre_programado: { icon: 'calendar-outline', label: 'Cierre programado' },
+  desfile: { icon: 'flag-outline', label: 'Desfile' },
+  festividad: { icon: 'wine-outline', label: 'Festividad' },
+  feria: { icon: 'storefront-outline', label: 'Feria' },
+  marcha: { icon: 'people-outline', label: 'Marcha' },
+  incendio: { icon: 'flame-outline', label: 'Incendio' },
+  derrumbe: { icon: 'alert-circle-outline', label: 'Derrumbe' },
+  deslizamiento: { icon: 'trending-down-outline', label: 'Deslizamiento' },
+  inundacion: { icon: 'water-outline', label: 'Inundacion' },
+};
+
+const IncidentMapMarker = memo(function IncidentMapMarker({ incident, onPress }: IncidentMapMarkerProps) {
+  const [tracksViewChanges, setTracksViewChanges] = useState(true);
+  const markerConfig = INCIDENT_MARKER_CONFIG[incident.type];
+  const markerColor = INCIDENT_TYPE_COLORS[incident.type];
+
+  useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      setTracksViewChanges(false);
+    }, 180);
+
+    return () => {
+      clearTimeout(timeoutId);
+    };
+  }, []);
+
+  return (
+    <Marker
+      coordinate={{ latitude: incident.latitude, longitude: incident.longitude }}
+      title={incident.title}
+      description={incident.description}
+      onPress={() => onPress(incident)}
+      tracksViewChanges={tracksViewChanges}
+    >
+      <View style={[styles.incidentMarkerWrap, { shadowColor: markerColor }]}>
+        <View style={[styles.incidentMarkerRing, { borderColor: markerColor }]}> 
+          <View style={[styles.incidentMarkerCircle, { backgroundColor: markerColor }]}>
+            <Ionicons name={markerConfig.icon} size={12} color="#FFFFFF" />
+          </View>
+        </View>
+        <View style={[styles.incidentMarkerDot, { backgroundColor: markerColor }]} />
+      </View>
+    </Marker>
+  );
+});
+
+const MemoFilterChip = memo(FilterChip);
+
+type MapCanvasProps = {
+  mapRef: RefObject<MapView | null>;
+  incidents: Incident[];
+  filteredIncidents: Incident[];
+  searchPreview?: SearchPreview | null;
+  routePreview?: { name: string; distanceKm: number; coordinates: { latitude: number; longitude: number }[] };
+  openIncidentDetail: (incident: Incident) => void;
+};
+
+const MapCanvas = memo(function MapCanvas({
+  mapRef,
+  incidents,
+  filteredIncidents,
+  searchPreview,
+  routePreview,
+  openIncidentDetail,
+}: MapCanvasProps) {
+  const restoredRegion = getSavedMapRegion();
+  const hasAppliedInitialFitRef = useRef(Boolean(restoredRegion));
+
+  useEffect(() => {
+    if (!incidents.length || hasAppliedInitialFitRef.current || !mapRef.current) {
+      return;
+    }
+
+    hasAppliedInitialFitRef.current = true;
+
+    mapRef.current.fitToCoordinates(
+      incidents.flatMap((incident) => incident.mapCoordinates),
+      {
+        edgePadding: {
+          top: 120,
+          right: 70,
+          bottom: 120,
+          left: 70,
+        },
+        animated: true,
+      }
+    );
+  }, [incidents]);
+
+  return (
+    <MapView
+      ref={mapRef}
+      initialRegion={restoredRegion ?? DEFAULT_REGION}
+      style={styles.map}
+      showsUserLocation
+      showsMyLocationButton={false}
+      followsUserLocation={false}
+      scrollEnabled
+      zoomEnabled
+      rotateEnabled
+      pitchEnabled
+      onRegionChangeComplete={(region) => setSavedMapRegion(region)}>
+      {searchPreview?.coordinates.length ? (
+        <>
+          {searchPreview.coordinates.length > 1 ? (
+            <Polyline coordinates={searchPreview.coordinates} strokeColor={PRIMARY} strokeWidth={6} />
+          ) : null}
+
+          <Marker
+            coordinate={searchPreview.marker}
+            pinColor={PRIMARY}
+            title={searchPreview.title}
+            description={searchPreview.subtitle}
+          />
+        </>
+      ) : null}
+
+      {routePreview?.coordinates.length ? (
+        <>
+          {routePreview.coordinates.length > 1 ? (
+            <Polyline
+              coordinates={routePreview.coordinates}
+              strokeColor={PRIMARY}
+              strokeWidth={5}
+            />
+          ) : null}
+
+          <Marker
+            coordinate={routePreview.coordinates[0]}
+            pinColor={PRIMARY}
+            title={routePreview.name}
+          />
+
+          {routePreview.coordinates.length > 1 ? (
+            <Marker
+              coordinate={routePreview.coordinates[routePreview.coordinates.length - 1]}
+              pinColor={PRIMARY}
+              title={`${routePreview.name} · destino`}
+            />
+          ) : null}
+        </>
+      ) : null}
+
+      {filteredIncidents.map((incident) => {
+        if (incident.geometryType === 'Point') {
+          return (
+            <IncidentMapMarker
+              key={incident.id}
+              incident={incident}
+              onPress={openIncidentDetail}
+            />
+          );
+        }
+
+        return (
+          <Fragment key={incident.id}>
+            <Polyline
+              key={`${incident.id}-line`}
+              coordinates={incident.mapCoordinates}
+              strokeColor={INCIDENT_TYPE_COLORS[incident.type]}
+              strokeWidth={5}
+              tappable
+              onPress={() => openIncidentDetail(incident)}
+            />
+            <IncidentMapMarker
+              key={`${incident.id}-center`}
+              incident={incident}
+              onPress={openIncidentDetail}
+            />
+          </Fragment>
+        );
+      })}
+    </MapView>
+  );
+});
+
 type SearchParams = {
   routeId?: string | string[];
   lat?: string;
   lng?: string;
+};
+
+type NominatimSuggestion = {
+  place_id?: number;
+  osm_id?: number;
+  lat: string;
+  lon: string;
+  display_name: string;
+  class?: string;
+  type?: string;
+  importance?: number;
+  geojson?: {
+    type?: string;
+    coordinates?: unknown;
+  } | null;
+  address?: {
+    road?: string;
+    pedestrian?: string;
+    cycleway?: string;
+    footway?: string;
+    junction?: string;
+    house_number?: string;
+    suburb?: string;
+    neighbourhood?: string;
+    city?: string;
+    town?: string;
+    municipality?: string;
+    county?: string;
+    department?: string;
+    state?: string;
+    region?: string;
+    country?: string;
+  };
+};
+
+type SearchSuggestion = {
+  id: string;
+  latitude: number;
+  longitude: number;
+  title: string;
+  subtitle: string;
+  raw: NominatimSuggestion;
+};
+
+type SearchPreview = {
+  title: string;
+  subtitle: string;
+  marker: { latitude: number; longitude: number };
+  coordinates: Array<{ latitude: number; longitude: number }>;
+  kind: 'point' | 'line';
+};
+
+type SearchArea = {
+  city?: string;
+  department?: string;
 };
 
 export default function MapHomeScreen() {
@@ -59,20 +308,18 @@ export default function MapHomeScreen() {
   const [incidents, setIncidents] = useState<Incident[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedFilter, setSelectedFilter] = useState<IncidentFilter>('todos');
-  const [selectedSeverities, setSelectedSeverities] = useState<Incident['severity'][]>([
-    'Critico',
-    'Alto',
-    'Medio',
-    'Bajo',
-  ]);
-  const [tempSelectedSeverities, setTempSelectedSeverities] = useState<Incident['severity'][]>(selectedSeverities);
+  const [selectedSeverities, setSelectedSeverities] = useState<Incident['severity'][]>(DEFAULT_SEVERITIES);
+  const [tempSelectedSeverities, setTempSelectedSeverities] = useState<Incident['severity'][]>(DEFAULT_SEVERITIES);
   const [showFilterModal, setShowFilterModal] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [suggestions, setSuggestions] = useState<Array<any>>([]);
+  const [suggestions, setSuggestions] = useState<SearchSuggestion[]>([]);
   const [loadingSuggestions, setLoadingSuggestions] = useState(false);
   const [userCoordinate, setUserCoordinate] = useState<{ latitude: number; longitude: number } | null>(
     null
   );
+  const [userSearchArea, setUserSearchArea] = useState<SearchArea | null>(null);
+  const [searchErrorMessage, setSearchErrorMessage] = useState<string | null>(null);
+  const [selectedSearchPreview, setSelectedSearchPreview] = useState<SearchPreview | null>(null);
   const [infoMessage, setInfoMessage] = useState<string | null>(null);
   const [centeringUser, setCenteringUser] = useState(false);
   const [selectedIncident, setSelectedIncident] = useState<Incident | null>(null);
@@ -92,6 +339,16 @@ export default function MapHomeScreen() {
   const routePreview = useRoutesStore((state) =>
     routeId ? state.routes.find((route) => route.id === routeId) : undefined,
   );
+
+  const openFilterModal = () => {
+    setTempSelectedSeverities(selectedSeverities);
+    setShowFilterModal(true);
+  };
+
+  const handleClearFilters = () => {
+    setSelectedSeverities(DEFAULT_SEVERITIES);
+    setTempSelectedSeverities(DEFAULT_SEVERITIES);
+  };
 
   const clearRoutePreview = () => {
     useRoutesStore.setState({ selectedRouteId: null });
@@ -159,6 +416,9 @@ export default function MapHomeScreen() {
         };
 
         setUserCoordinate(coordinate);
+        void resolveSearchArea(coordinate.latitude, coordinate.longitude)
+          .then((area) => setUserSearchArea(area))
+          .catch(() => undefined);
       }
 
       mapRef.current.animateToRegion(
@@ -188,92 +448,174 @@ export default function MapHomeScreen() {
         latitudeDelta: 0.012,
         longitudeDelta: 0.012,
       },
-      450
+      320
     );
   }, []);
 
-  useEffect(() => {
-    let locationSubscription: Location.LocationSubscription | null = null;
-    let cancelled = false;
+  const handleSelectSuggestion = useCallback((suggestion: SearchSuggestion) => {
+    const geometryCoordinates = extractSuggestionCoordinates(suggestion.raw);
+    const preview: SearchPreview = {
+      title: suggestion.title,
+      subtitle: suggestion.subtitle,
+      marker: {
+        latitude: suggestion.latitude,
+        longitude: suggestion.longitude,
+      },
+      coordinates: geometryCoordinates.length > 0 ? geometryCoordinates : [{ latitude: suggestion.latitude, longitude: suggestion.longitude }],
+      kind: geometryCoordinates.length > 1 ? 'line' : 'point',
+    };
 
-    const loadMapData = async () => {
-      setLoading(true);
-      setInfoMessage(null);
+    setSelectedSearchPreview(preview);
+
+    if (preview.kind === 'line' && preview.coordinates.length > 1) {
+      mapRef.current?.fitToCoordinates(preview.coordinates, {
+        edgePadding: {
+          top: 120,
+          right: 80,
+          bottom: 160,
+          left: 80,
+        },
+        animated: true,
+      });
+    } else {
+      mapRef.current?.animateCamera(
+        {
+          center: preview.marker,
+          zoom: 16.5,
+          heading: 0,
+          pitch: 0,
+        },
+        { duration: 450 },
+      );
+    }
+
+    setSearchQuery(suggestion.title);
+    setSuggestions([]);
+    setSearchErrorMessage(null);
+  }, []);
+
+  const handleSearchQueryChange = useCallback((value: string) => {
+    setSearchQuery(value);
+
+    if (selectedSearchPreview && value !== selectedSearchPreview.title) {
+      setSelectedSearchPreview(null);
+    }
+  }, [selectedSearchPreview]);
+
+useEffect(() => {
+  let locationSubscription: Location.LocationSubscription | null = null;
+  let cancelled = false;
+
+  // ✅ Función de recarga inteligente en segundo plano
+  const fetchIncidents = async () => {
+    try {
+      const activeIncidents = await fetchActiveIncidents();
+      if (cancelled) return;
+
+      setIncidents((prev) => {
+        const prevMap = new Map(prev.map((i) => [i.id, i]));
+        const nextIds = new Set(activeIncidents.map((i) => i.id));
+
+        const hasNew = activeIncidents.some((i) => !prevMap.has(i.id));
+        const hasRemoved = prev.some((i) => !nextIds.has(i.id));
+        const hasUpdated = activeIncidents.some((next) => {
+          const existing = prevMap.get(next.id);
+          return existing && (
+            existing.status !== next.status ||
+            existing.severity !== next.severity ||
+            existing.title !== next.title ||
+            existing.description !== next.description
+          );
+        });
+
+        if (!hasNew && !hasRemoved && !hasUpdated) return prev;
+
+        syncAlertsFromIncidents(activeIncidents, userCoordinate);
+        return activeIncidents;
+      });
+    } catch {
+      // silencioso para no interrumpir al usuario
+    }
+  };
+
+  // Carga inicial (igual que antes)
+  const loadMapData = async () => {
+    setLoading(true);
+    setInfoMessage(null);
+
+    try {
+      const activeIncidents = await fetchActiveIncidents();
+      if (cancelled) return;
+
+      setIncidents(activeIncidents);
+      syncAlertsFromIncidents(activeIncidents, null);
+
+      const locationPermission = await Location.requestForegroundPermissionsAsync();
+      if (cancelled || locationPermission.status !== 'granted') return;
 
       try {
-        const activeIncidents = await fetchActiveIncidents();
+        const position = await Location.getCurrentPositionAsync({
+          accuracy: Location.Accuracy.Balanced,
+        });
+        if (cancelled) return;
 
-        if (cancelled) {
-          return;
-        }
+        setUserCoordinate({
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude,
+        });
 
-        setIncidents(activeIncidents);
-        syncAlertsFromIncidents(activeIncidents, null);
+        void resolveSearchArea(position.coords.latitude, position.coords.longitude)
+          .then((area) => setUserSearchArea(area))
+          .catch(() => undefined);
 
-        const locationPermission = await Location.requestForegroundPermissionsAsync();
+        syncAlertsFromIncidents(activeIncidents, {
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude,
+        });
 
-        if (cancelled || locationPermission.status !== 'granted') {
-          return;
-        }
-
-        try {
-          const position = await Location.getCurrentPositionAsync({
+        locationSubscription = await Location.watchPositionAsync(
+          {
             accuracy: Location.Accuracy.Balanced,
-          });
-
-          if (cancelled) {
-            return;
+            timeInterval: 4000,
+            distanceInterval: 5,
+          },
+          ({ coords }) => {
+            setUserCoordinate({
+              latitude: coords.latitude,
+              longitude: coords.longitude,
+            });
           }
-
-          setUserCoordinate({
-            latitude: position.coords.latitude,
-            longitude: position.coords.longitude,
-          });
-
-          syncAlertsFromIncidents(activeIncidents, {
-            latitude: position.coords.latitude,
-            longitude: position.coords.longitude,
-          });
-
-          locationSubscription = await Location.watchPositionAsync(
-            {
-              accuracy: Location.Accuracy.Balanced,
-              timeInterval: 4000,
-              distanceInterval: 5,
-            },
-            ({ coords }) => {
-              setUserCoordinate({
-                latitude: coords.latitude,
-                longitude: coords.longitude,
-              });
-            }
-          );
-        } catch {
-          if (!cancelled) {
-            setInfoMessage('No se pudo obtener tu ubicacion ahora. Intenta nuevamente.');
-          }
-        }
-      } catch (error) {
-        if (error instanceof ConnectivityError) {
-          setInfoMessage(error.message);
-          setIncidents([]);
-        } else {
-          setInfoMessage(error instanceof Error ? error.message : 'No fue posible cargar los reportes en este momento.');
-        }
-      } finally {
+        );
+      } catch {
         if (!cancelled) {
-          setLoading(false);
+          setInfoMessage('No se pudo obtener tu ubicacion ahora. Intenta nuevamente.');
         }
       }
-    };
+    } catch (error) {
+      if (error instanceof ConnectivityError) {
+        setInfoMessage(error.message);
+        setIncidents([]);
+      } else {
+        setInfoMessage(error instanceof Error ? error.message : 'No fue posible cargar los reportes en este momento.');
+      }
+    } finally {
+      if (!cancelled) setLoading(false);
+    }
+  };
 
-    loadMapData();
+  loadMapData();
 
-    return () => {
-      cancelled = true;
-      locationSubscription?.remove();
-    };
-  }, []);
+  // ✅ Polling cada 15 segundos
+  const pollInterval = setInterval(() => {
+    void fetchIncidents();
+  }, INCIDENTS_POLL_INTERVAL_MS);
+
+  return () => {
+    cancelled = true;
+    locationSubscription?.remove();
+    clearInterval(pollInterval); // ✅ limpia al salir de la pantalla
+  };
+}, []);
 
   const incidentCounts = useMemo(() => {
     const initialCounts = INCIDENT_TYPES.reduce((accumulator, type) => {
@@ -296,7 +638,9 @@ export default function MapHomeScreen() {
       selectedFilter === 'todos' ? incidents : incidents.filter((incident) => incident.type === selectedFilter);
 
     // filter by selected severities
-    list = list.filter((incident) => selectedSeverities.includes(incident.severity));
+    if (selectedSeverities.length > 0) {
+      list = list.filter((incident) => selectedSeverities.includes(incident.severity));
+    }
 
     return list;
   }, [incidents, selectedFilter, selectedSeverities]);
@@ -308,69 +652,6 @@ export default function MapHomeScreen() {
 
     return buildProgress(selectedIncident.startAt, selectedIncident.endAt);
   }, [selectedIncident]);
-
-  useEffect(() => {
-    if (!incidents.length || hasAppliedInitialFitRef.current || !mapRef.current) {
-      return;
-    }
-
-    hasAppliedInitialFitRef.current = true;
-
-    mapRef.current.fitToCoordinates(
-      incidents.flatMap((incident) => incident.mapCoordinates),
-      {
-        edgePadding: {
-          top: 120,
-          right: 70,
-          bottom: 120,
-          left: 70,
-        },
-        animated: true,
-      }
-    );
-  }, [incidents]);
-
-  useEffect(() => {
-    if (!mapRef.current) {
-      return;
-    }
-
-    setSelectedIncident(null);
-
-    if (filteredIncidents.length === 0) {
-      mapRef.current.animateToRegion(DEFAULT_REGION, 550);
-      return;
-    }
-
-    if (filteredIncidents.length === 1) {
-      const target = filteredIncidents[0];
-
-      mapRef.current.animateToRegion(
-        {
-          latitude: target.latitude,
-          longitude: target.longitude,
-          latitudeDelta: 0.02,
-          longitudeDelta: 0.02,
-        },
-        550
-      );
-
-      return;
-    }
-
-    mapRef.current.fitToCoordinates(
-      filteredIncidents.flatMap((incident) => incident.mapCoordinates),
-      {
-        edgePadding: {
-          top: 120,
-          right: 70,
-          bottom: 120,
-          left: 70,
-        },
-        animated: true,
-      }
-    );
-  }, [selectedFilter, filteredIncidents]);
 
   useEffect(() => {
     if (!mapRef.current || !routePreview || routePreview.coordinates.length === 0) {
@@ -445,51 +726,133 @@ export default function MapHomeScreen() {
     if (!searchQuery || searchQuery.trim().length === 0) {
       setSuggestions([]);
       setLoadingSuggestions(false);
+      setSearchErrorMessage(null);
       return;
     }
 
     let cancelled = false;
     const controller = new AbortController();
+    const searchVariants = buildSearchVariants(searchQuery).slice(0, 3);
+
+    const buildSearchUrl = (queryText: string, mode: 'nearby' | 'global') => {
+      const params = new URLSearchParams({
+        format: 'jsonv2',
+        q: queryText,
+        addressdetails: '1',
+        limit: '8',
+        countrycodes: 'bo',
+        'accept-language': 'es',
+        polygon_geojson: '1',
+        dedupe: '1',
+      });
+
+      if (mode === 'nearby' && userCoordinate) {
+        const latitudeSpan = 0.55;
+        const longitudeSpan = 0.7;
+        const left = userCoordinate.longitude - longitudeSpan;
+        const right = userCoordinate.longitude + longitudeSpan;
+        const top = userCoordinate.latitude + latitudeSpan;
+        const bottom = userCoordinate.latitude - latitudeSpan;
+
+        params.set('viewbox', `${left},${top},${right},${bottom}`);
+        params.set('bounded', '1');
+      }
+
+      return `https://nominatim.openstreetmap.org/search?${params.toString()}`;
+    };
+
+    const mergeUniqueSuggestions = (current: NominatimSuggestion[], next: NominatimSuggestion[]) => {
+      const seen = new Set(current.map((item) => `${item.place_id ?? item.osm_id ?? `${item.lat}-${item.lon}`}`));
+
+      return [
+        ...current,
+        ...next.filter((item) => {
+          const key = `${item.place_id ?? item.osm_id ?? `${item.lat}-${item.lon}`}`;
+          if (seen.has(key)) {
+            return false;
+          }
+
+          seen.add(key);
+          return true;
+        }),
+      ];
+    };
+
+    const toSuggestion = (item: NominatimSuggestion): SearchSuggestion => {
+      const latitude = Number(item.lat);
+      const longitude = Number(item.lon);
+      const formatted = formatNominatimSuggestion(item);
+
+      return {
+        id: `${item.place_id ?? item.osm_id ?? `${item.lat}-${item.lon}`}`,
+        latitude,
+        longitude,
+        title: formatted.title,
+        subtitle: formatted.subtitle,
+        raw: item,
+      };
+    };
 
     const timer = setTimeout(async () => {
       try {
         setLoadingSuggestions(true);
-        const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(
-          searchQuery
-        )}&addressdetails=1&limit=6`;
+        setSearchErrorMessage(null);
 
-        const res = await fetch(url, {
-          signal: controller.signal,
-          headers: {
-            'Accept-Language': 'es',
-            'User-Agent': 'Revibo/1.0',
-          },
-        });
+        const fetchSuggestions = async (queryText: string, mode: 'nearby' | 'global') => {
+          const res = await fetch(buildSearchUrl(queryText, mode), {
+            signal: controller.signal,
+            headers: {
+              Accept: 'application/json',
+              'Accept-Language': 'es',
+              'User-Agent': 'Revibo/1.0',
+            },
+          });
+
+          if (!res.ok) {
+            return [] as NominatimSuggestion[];
+          }
+
+          const data = (await res.json().catch(() => [])) as NominatimSuggestion[];
+          return normalizeNominatimPayload(data);
+        };
+
+        const requestPlans: Array<Promise<NominatimSuggestion[]>> = [];
+
+        if (userCoordinate) {
+          requestPlans.push(fetchSuggestions(searchVariants[0] ?? searchQuery, 'nearby'));
+        }
+
+        for (const variant of searchVariants) {
+          requestPlans.push(fetchSuggestions(variant, 'global'));
+        }
+
+        const resultSets = await Promise.all(requestPlans);
+        const collectedResults = mergeUniqueSuggestions([], resultSets.flat());
 
         if (cancelled) return;
 
-        if (!res.ok) {
-          setSuggestions([]);
-          setLoadingSuggestions(false);
-          return;
+        const rankedSuggestions = rankNominatimSuggestions(collectedResults, searchQuery, userCoordinate).slice(0, 10);
+
+        if (rankedSuggestions.length === 0) {
+          setSearchErrorMessage('No encontramos coincidencias en Bolivia.');
         }
 
-        const data = await res.json();
-        setSuggestions(Array.isArray(data) ? data : []);
+        setSuggestions(rankedSuggestions.map(toSuggestion));
       } catch (e) {
         if ((e as any)?.name === 'AbortError') return;
         setSuggestions([]);
+        setSearchErrorMessage('No se pudo buscar ubicaciones. Verifica tu conexión e intenta nuevamente.');
       } finally {
         if (!cancelled) setLoadingSuggestions(false);
       }
-    }, 350);
+    }, 300);
 
     return () => {
       cancelled = true;
       controller.abort();
       clearTimeout(timer);
     };
-  }, [searchQuery]);
+  }, [searchQuery, userCoordinate, userSearchArea]);
 
   return (
     <View style={styles.container}>
@@ -497,12 +860,12 @@ export default function MapHomeScreen() {
         <View style={styles.searchRow}>
           <TextInput
             value={searchQuery}
-            onChangeText={setSearchQuery}
+            onChangeText={handleSearchQueryChange}
             placeholder="Buscar calle, avenida o carretera"
             placeholderTextColor="#D6D0FF"
             style={styles.searchInput}
           />
-          <Pressable onPress={() => setShowFilterModal(true)} style={styles.filterButton}>
+          <Pressable onPress={openFilterModal} style={styles.filterButton}>
             <MaterialIcons name="filter-list" size={22} color="#FFFFFF" />
           </Pressable>
         </View>
@@ -511,14 +874,14 @@ export default function MapHomeScreen() {
           horizontal
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.filtersContent}>
-          <FilterChip
+          <MemoFilterChip
             label="Todos"
             count={incidents.length}
             active={selectedFilter === 'todos'}
             onPress={() => setSelectedFilter('todos')}
           />
           {INCIDENT_TYPES.map((type) => (
-            <FilterChip
+            <MemoFilterChip
               key={type}
               label={INCIDENT_TYPE_LABELS[type]}
               count={incidentCounts[type]}
@@ -531,21 +894,34 @@ export default function MapHomeScreen() {
           <View style={styles.suggestionsBoxInline}>
             {loadingSuggestions ? (
               <View style={styles.suggestionRow}><ActivityIndicator size="small" color="#6F61DD" /></View>
+            ) : searchErrorMessage ? (
+              <View style={styles.emptySuggestionState}>
+                <Text style={styles.emptySuggestionTitle}>Sin resultados</Text>
+                <Text style={styles.emptySuggestionSubtitle}>{searchErrorMessage}</Text>
+              </View>
             ) : (
-              suggestions.map((s) => (
-                <Pressable
-                  key={s.place_id ?? s.osm_id ?? s.lat + s.lon}
-                  onPress={() => {
-                    const lat = parseFloat(s.lat);
-                    const lon = parseFloat(s.lon);
-                    mapRef.current?.animateToRegion({ latitude: lat, longitude: lon, latitudeDelta: 0.01, longitudeDelta: 0.01 }, 450);
-                    setSuggestions([]);
-                    setSearchQuery('');
-                  }}
-                  style={styles.suggestionRow}>
-                  <Text style={styles.suggestionText}>{s.display_name}</Text>
-                </Pressable>
-              ))
+              <>
+                {suggestions.map((s) => (
+                  <Pressable
+                    key={s.id}
+                    onPress={() => handleSelectSuggestion(s)}
+                    style={styles.suggestionRow}>
+                    <View style={styles.suggestionMainRow}>
+                      <Text style={styles.suggestionTitle} numberOfLines={1}>{s.title}</Text>
+                      <Text style={styles.suggestionType}>{formatSuggestionKind(s.raw)}</Text>
+                    </View>
+                    <Text style={styles.suggestionSubtitle} numberOfLines={2}>{s.subtitle}</Text>
+                  </Pressable>
+                ))}
+                {suggestions.length === 0 ? (
+                  <View style={styles.emptySuggestionState}>
+                    <Text style={styles.emptySuggestionTitle}>Escribe para buscar</Text>
+                    <Text style={styles.emptySuggestionSubtitle}>
+                      Buscamos calles, avenidas, carreteras, barrios e intersecciones en Bolivia.
+                    </Text>
+                  </View>
+                ) : null}
+              </>
             )}
           </View>
         ) : null}
@@ -553,13 +929,18 @@ export default function MapHomeScreen() {
 
 
       {showFilterModal ? (
-        <View style={styles.filterModalOverlay}>
-          <View style={styles.filterModal}>
+        <Pressable style={styles.filterModalOverlay} onPress={() => setShowFilterModal(false)}>
+          <View style={styles.filterModal} onStartShouldSetResponder={() => true}>
             <View style={styles.filterHeader}>
               <Text style={styles.filterTitle}>Filtrar incidentes</Text>
-              <Pressable onPress={() => { setTempSelectedSeverities(['Critico','Alto','Medio','Bajo']); }}>
-                <Text style={styles.clearText}>Limpiar</Text>
-              </Pressable>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <Pressable onPress={handleClearFilters}>
+                  <Text style={styles.clearText}>Limpiar</Text>
+                </Pressable>
+                <Pressable onPress={() => setShowFilterModal(false)}>
+                  <MaterialIcons name="close" size={20} color="#2F2B3A" />
+                </Pressable>
+              </View>
             </View>
 
             <Text style={styles.filterSectionTitle}>GRAVEDAD</Text>
@@ -590,83 +971,21 @@ export default function MapHomeScreen() {
               <Text style={styles.applyFiltersText}>Aplicar filtros</Text>
             </Pressable>
           </View>
-        </View>
+        </Pressable>
       ) : null}
 
-      <MapView
-        ref={mapRef}
-        initialRegion={restoredRegion ?? DEFAULT_REGION}
-        style={styles.map}
-        showsUserLocation
-        showsMyLocationButton={false}
-        followsUserLocation={false}
-        scrollEnabled
-        zoomEnabled
-        rotateEnabled
-        pitchEnabled
-        onRegionChangeComplete={(region) => setSavedMapRegion(region)}>
-        {routePreview?.coordinates.length ? (
-          <>
-            {routePreview.coordinates.length > 1 ? (
-              <Polyline
-                coordinates={routePreview.coordinates}
-                strokeColor={PRIMARY}
-                strokeWidth={5}
-              />
-            ) : null}
-
-            <Marker
-              coordinate={routePreview.coordinates[0]}
-              pinColor={PRIMARY}
-              title={routePreview.name}
-            />
-
-            {routePreview.coordinates.length > 1 ? (
-              <Marker
-                coordinate={routePreview.coordinates[routePreview.coordinates.length - 1]}
-                pinColor={PRIMARY}
-                title={`${routePreview.name} · destino`}
-              />
-            ) : null}
-          </>
-        ) : null}
-
-        {filteredIncidents.map((incident) => {
-          if (incident.geometryType === 'Point') {
-            return (
-              <Marker
-                key={incident.id}
-                coordinate={{ latitude: incident.latitude, longitude: incident.longitude }}
-                pinColor={INCIDENT_TYPE_COLORS[incident.type]}
-                title={incident.title}
-                description={incident.description}
-                onPress={() => openIncidentDetail(incident)}
-              />
-            );
-          }
-
-          return (
-            <Fragment key={incident.id}>
-              <Polyline
-                key={`${incident.id}-line`}
-                coordinates={incident.mapCoordinates}
-                strokeColor={INCIDENT_TYPE_COLORS[incident.type]}
-                strokeWidth={5}
-                tappable
-                onPress={() => openIncidentDetail(incident)}
-              />
-              <Marker
-                key={`${incident.id}-center`}
-                coordinate={{ latitude: incident.latitude, longitude: incident.longitude }}
-                pinColor={INCIDENT_TYPE_COLORS[incident.type]}
-                title={incident.title}
-                description={incident.description}
-                onPress={() => openIncidentDetail(incident)}
-              />
-            </Fragment>
-          );
-        })}
-      </MapView>
+      <MapCanvas
+        mapRef={mapRef}
+        incidents={incidents}
+        filteredIncidents={filteredIncidents}
+        searchPreview={selectedSearchPreview}
+        routePreview={routePreview ? {
+          name: routePreview.name,
+          distanceKm: routePreview.distanceKm,
+          coordinates: routePreview.coordinates,
+        } : undefined}
+        openIncidentDetail={openIncidentDetail}
+      />
 
       {routePreview ? (
         <View style={[styles.routePreviewBanner, { top: insets.top + 112 }]}>
@@ -775,7 +1094,7 @@ export default function MapHomeScreen() {
               </View>
             ) : null}
 
-            <Text style={styles.descriptionText}>{selectedIncident.description}</Text>
+            <Text style={(styles as any).descriptionText}>{selectedIncident.description}</Text>
 
             {selectedIncident.imageUrls && selectedIncident.imageUrls.length > 0 ? (
               <View style={styles.imagesSection}>
@@ -791,28 +1110,6 @@ export default function MapHomeScreen() {
                 </ScrollView>
               </View>
             ) : null}
-
-            {selectedIncident.status !== 'resuelto' ? (
-              <Pressable
-                style={styles.routeButton}
-                onPress={() =>
-                  router.push({
-                    pathname: '/(tabs)/rutas',
-                    params: {
-                      incidentId: selectedIncident.id,
-                      incidentLat: String(selectedIncident.latitude),
-                      incidentLng: String(selectedIncident.longitude),
-                    },
-                  })
-                }>
-                <Text style={styles.routeButtonText}>Ver ruta</Text>
-                <MaterialIcons name="arrow-forward" size={18} color="#FFFFFF" />
-              </Pressable>
-            ) : (
-              <Pressable style={[styles.routeButton, styles.routeButtonDisabled]} disabled>
-                <Text style={styles.routeButtonText}>Reporte resuelto</Text>
-              </Pressable>
-            )}
 
             <Pressable onPress={closeIncidentDetail} style={styles.closeSheetButton}>
               <Text style={styles.closeSheetText}>Cerrar</Text>
@@ -870,6 +1167,343 @@ function firstParam(value: string | string[] | undefined): string | undefined {
   }
 
   return value;
+}
+
+function normalizeSearchText(value: string): string {
+  return value
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+}
+
+function collapseSearchQuery(value: string): string {
+  return value.trim().replace(/\s+/g, ' ');
+}
+
+function splitIntersectionQuery(value: string): { left: string; right: string } | null {
+  const cleaned = collapseSearchQuery(value);
+
+  const patterns = [
+    /^(.+?)\s+(?:esquina|cruce|interseccion|intersección|intersection)\s+(.+)$/i,
+    /^(.+?)\s+(?:y|e|con)\s+(.+)$/i,
+    /^(.+?)\s*[\/&+\-]\s*(.+)$/i,
+  ];
+
+  for (const pattern of patterns) {
+    const match = cleaned.match(pattern);
+
+    if (!match) {
+      continue;
+    }
+
+    const left = match[1]?.trim();
+    const right = match[2]?.trim();
+
+    if (left && right && left.length >= 3 && right.length >= 3) {
+      return { left, right };
+    }
+  }
+
+  return null;
+}
+
+function buildSearchVariants(query: string): string[] {
+  const cleaned = collapseSearchQuery(query);
+  const variants = new Set<string>([cleaned]);
+  const intersection = splitIntersectionQuery(cleaned);
+
+  if (intersection) {
+    variants.add(`${intersection.left} esquina ${intersection.right}`);
+    variants.add(`${intersection.left} con ${intersection.right}`);
+  }
+
+  return [...variants].filter((item) => item.length > 0);
+}
+
+function normalizeNominatimPayload(payload: unknown): NominatimSuggestion[] {
+  if (!Array.isArray(payload)) {
+    return [];
+  }
+
+  return payload.filter((item): item is NominatimSuggestion => {
+    if (!item || typeof item !== 'object') {
+      return false;
+    }
+
+    const candidate = item as Partial<NominatimSuggestion>;
+    return (
+      typeof candidate.lat === 'string' &&
+      typeof candidate.lon === 'string' &&
+      typeof candidate.display_name === 'string'
+    );
+  });
+}
+
+async function resolveSearchArea(latitude: number, longitude: number): Promise<SearchArea | null> {
+  try {
+    const response = await fetch(
+      `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${latitude}&lon=${longitude}&addressdetails=1&accept-language=es`,
+      {
+        headers: {
+          Accept: 'application/json',
+          'Accept-Language': 'es',
+          'User-Agent': 'Revibo/1.0',
+        },
+      },
+    );
+
+    const payload = await response.json().catch(() => null);
+    const address = payload?.address ?? {};
+
+    if (!response.ok || !payload || typeof payload !== 'object') {
+      return null;
+    }
+
+    const city = address.city || address.town || address.municipality || address.county || address.suburb;
+    const department = address.state || address.region || address.county;
+
+    return city || department
+      ? {
+          city,
+          department,
+        }
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function extractSuggestionCoordinates(suggestion: NominatimSuggestion): Array<{ latitude: number; longitude: number }> {
+  const geojson = suggestion.geojson;
+
+  if (!geojson || !geojson.type || geojson.coordinates == null) {
+    return [];
+  }
+
+  const toPoint = (pair: unknown): { latitude: number; longitude: number } | null => {
+    if (!Array.isArray(pair) || pair.length < 2) {
+      return null;
+    }
+
+    const longitude = Number(pair[0]);
+    const latitude = Number(pair[1]);
+
+    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+      return null;
+    }
+
+    return { latitude, longitude };
+  };
+
+  const extractLine = (line: unknown): Array<{ latitude: number; longitude: number }> => {
+    if (!Array.isArray(line)) {
+      return [];
+    }
+
+    return line.map(toPoint).filter((point): point is { latitude: number; longitude: number } => point !== null);
+  };
+
+  if (geojson.type === 'Point') {
+    const point = toPoint(geojson.coordinates);
+    return point ? [point] : [];
+  }
+
+  if (geojson.type === 'LineString') {
+    return extractLine(geojson.coordinates);
+  }
+
+  if (geojson.type === 'MultiLineString' && Array.isArray(geojson.coordinates) && geojson.coordinates.length > 0) {
+    return extractLine(geojson.coordinates[0]);
+  }
+
+  if (geojson.type === 'Polygon' && Array.isArray(geojson.coordinates) && geojson.coordinates.length > 0) {
+    return extractLine(geojson.coordinates[0]);
+  }
+
+  if (geojson.type === 'MultiPolygon' && Array.isArray(geojson.coordinates) && geojson.coordinates.length > 0) {
+    const firstPolygon = geojson.coordinates[0];
+    if (Array.isArray(firstPolygon) && firstPolygon.length > 0) {
+      return extractLine(firstPolygon[0]);
+    }
+  }
+
+  return [];
+}
+
+function formatFallbackLocation(displayName: string): string {
+  const parts = displayName.split(',').map((part) => part.trim()).filter(Boolean);
+
+  if (parts.length === 0) {
+    return 'Bolivia';
+  }
+
+  if (parts.length === 1) {
+    return `${parts[0]}, Bolivia`;
+  }
+
+  return `${parts.slice(1, 3).join(' · ')}, Bolivia`;
+}
+
+function formatRoadName(address: NonNullable<NominatimSuggestion['address']>): string | null {
+  const road = address.road || address.pedestrian || address.cycleway || address.footway;
+  if (!road) {
+    return address.junction ? `Intersección ${address.junction}` : null;
+  }
+
+  if (address.house_number) {
+    return `${road} ${address.house_number}`;
+  }
+
+  return road;
+}
+
+function formatNominatimSuggestion(suggestion: NominatimSuggestion): { title: string; subtitle: string } {
+  const address = suggestion.address ?? {};
+  const roadLabel = formatRoadName(address);
+  const locality = [
+    address.suburb,
+    address.neighbourhood,
+    address.city,
+    address.town,
+    address.municipality,
+    address.county,
+    address.department,
+    address.state,
+  ].filter((part): part is string => Boolean(part));
+
+  if (roadLabel) {
+    return {
+      title: roadLabel,
+      subtitle: locality.join(' · ') || formatFallbackLocation(suggestion.display_name),
+    };
+  }
+
+  if (suggestion.type === 'junction' || address.junction) {
+    const junctionLabel = address.junction ? `Intersección ${address.junction}` : 'Intersección';
+
+    return {
+      title: junctionLabel,
+      subtitle: locality.join(' · ') || formatFallbackLocation(suggestion.display_name),
+    };
+  }
+
+  if (suggestion.class === 'highway') {
+    return {
+      title: suggestion.display_name.split(',')[0] || suggestion.display_name,
+      subtitle: locality.join(' · ') || formatFallbackLocation(suggestion.display_name),
+    };
+  }
+
+  return {
+    title: suggestion.display_name.split(',')[0] || suggestion.display_name,
+    subtitle: locality.join(' · ') || formatFallbackLocation(suggestion.display_name),
+  };
+}
+
+function formatSuggestionKind(suggestion: NominatimSuggestion): string {
+  const address = suggestion.address ?? {};
+  const road = address.road || address.pedestrian || address.cycleway || address.footway;
+  const normalizedType = normalizeSearchText(suggestion.type ?? '');
+
+  if (address.junction || suggestion.type === 'junction') {
+    return 'Intersección';
+  }
+
+  if (road) {
+    const normalizedRoad = normalizeSearchText(road);
+
+    if (
+      normalizedType.includes('motorway') ||
+      normalizedType.includes('trunk') ||
+      normalizedRoad.includes('autopista')
+    ) {
+      return 'Autopista';
+    }
+
+    if (
+      normalizedType.includes('primary') ||
+      normalizedType.includes('secondary') ||
+      normalizedType.includes('tertiary') ||
+      normalizedType.includes('road') ||
+      normalizedRoad.includes('carretera')
+    ) {
+      return 'Carretera';
+    }
+
+    if (normalizedRoad.includes('avenida') || normalizedRoad.includes('av.')) {
+      return 'Avenida';
+    }
+
+    return 'Calle';
+  }
+
+  if (suggestion.class === 'highway') {
+    return 'Carretera';
+  }
+
+  return 'Ubicación';
+}
+
+function rankNominatimSuggestions(
+  suggestions: NominatimSuggestion[],
+  query: string,
+  userCoordinate: { latitude: number; longitude: number } | null,
+): NominatimSuggestion[] {
+  const normalizedQuery = normalizeSearchText(query);
+
+  const scoreSuggestion = (suggestion: NominatimSuggestion): number => {
+    const address = suggestion.address ?? {};
+    const display = normalizeSearchText(suggestion.display_name);
+    const road = normalizeSearchText(address.road || address.pedestrian || address.cycleway || address.footway || '');
+    const junction = normalizeSearchText(address.junction || '');
+    const city = normalizeSearchText(address.city || address.town || address.municipality || address.department || address.state || '');
+
+    let score = 0;
+
+    if (display.includes(normalizedQuery)) score += 120;
+    if (display.startsWith(normalizedQuery)) score += 70;
+    if (road === normalizedQuery) score += 220;
+    if (road.startsWith(normalizedQuery)) score += 160;
+    if (road.includes(normalizedQuery)) score += 150;
+    if (junction === normalizedQuery) score += 200;
+    if (junction.startsWith(normalizedQuery)) score += 150;
+    if (junction.includes(normalizedQuery)) score += 140;
+    if (city.includes(normalizedQuery)) score += 40;
+
+    if (suggestion.class === 'highway') score += 30;
+    if (suggestion.type === 'junction') score += 60;
+
+    if (userCoordinate) {
+      const lat = Number(suggestion.lat);
+      const lon = Number(suggestion.lon);
+      const distance = Number.isFinite(lat) && Number.isFinite(lon)
+        ? haversineDistanceKm(userCoordinate.latitude, userCoordinate.longitude, lat, lon)
+        : 9999;
+
+      score += Math.max(0, 180 - distance * 8);
+    }
+
+    score += Number.isFinite(suggestion.importance ?? NaN) ? (suggestion.importance ?? 0) * 18 : 0;
+
+    return score;
+  };
+
+  return [...suggestions].sort((a, b) => scoreSuggestion(b) - scoreSuggestion(a));
+}
+
+function haversineDistanceKm(latA: number, lonA: number, latB: number, lonB: number): number {
+  const earthRadiusKm = 6371;
+  const toRadians = (value: number) => (value * Math.PI) / 180;
+  const deltaLatitude = toRadians(latB - latA);
+  const deltaLongitude = toRadians(lonB - lonA);
+  const latitude1 = toRadians(latA);
+  const latitude2 = toRadians(latB);
+
+  const a =
+    Math.sin(deltaLatitude / 2) ** 2 +
+    Math.sin(deltaLongitude / 2) ** 2 * Math.cos(latitude1) * Math.cos(latitude2);
+
+  return 2 * earthRadiusKm * Math.asin(Math.sqrt(a));
 }
 
 function StatusChip({ text }: { text: string }) {
@@ -981,6 +1615,44 @@ const styles = StyleSheet.create({
   filterChipLabelInactive: {
     color: '#F4F0FF',
   },
+  incidentMarkerWrap: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingBottom: 3,
+    paddingTop: 0,
+    paddingHorizontal: 0,
+    shadowOpacity: 0.22,
+    shadowRadius: 4,
+    shadowOffset: {
+      width: 0,
+      height: 4,
+    },
+    elevation: 4,
+  },
+  incidentMarkerRing: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    borderWidth: 2,
+    backgroundColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  incidentMarkerCircle: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  incidentMarkerDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    marginTop: -2,
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
+  },
   searchRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1029,9 +1701,46 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     borderBottomWidth: 1,
     borderBottomColor: '#F0EEF8',
+    gap: 4,
   },
-  suggestionText: {
+  suggestionMainRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+  suggestionTitle: {
     color: '#2F2B3A',
+    flex: 1,
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  suggestionType: {
+    color: '#6F61DD',
+    fontSize: 11,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  suggestionSubtitle: {
+    color: '#7D7891',
+    fontSize: 12,
+  },
+  emptySuggestionState: {
+    paddingHorizontal: 12,
+    paddingVertical: 14,
+    gap: 4,
+  },
+  emptySuggestionTitle: {
+    color: '#2F2B3A',
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  emptySuggestionSubtitle: {
+    color: '#7D7891',
+    fontSize: 12,
+    lineHeight: 17,
+    fontWeight: '600',
   },
   filterModalOverlay: {
     position: 'absolute',
@@ -1204,6 +1913,34 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     marginTop: 2,
   },
+  searchPreviewBanner: {
+    position: 'absolute',
+    left: 14,
+    right: 14,
+    borderRadius: 16,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    backgroundColor: 'rgba(17, 24, 39, 0.94)',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    shadowColor: '#000000',
+    shadowOpacity: 0.24,
+    shadowRadius: 10,
+    shadowOffset: {
+      width: 0,
+      height: 4,
+    },
+    elevation: 6,
+  },
+  searchPreviewBadge: {
+    width: 30,
+    height: 30,
+    borderRadius: 10,
+    backgroundColor: PRIMARY,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   routePreviewCloseButton: {
     width: 32,
     height: 32,
@@ -1369,30 +2106,31 @@ const styles = StyleSheet.create({
   progressTrack: {
     width: '100%',
     height: 5,
-    borderRadius: 6,
-    backgroundColor: '#E7E7EC',
+    borderRadius: 999,
+    backgroundColor: 'rgba(91, 63, 217, 0.12)',
     overflow: 'hidden',
   },
   progressFill: {
     height: '100%',
-    backgroundColor: '#E24A4A',
+    borderRadius: 999,
+    backgroundColor: PRIMARY,
   },
   descriptionText: {
     color: '#4C4958',
-    lineHeight: 22,
     fontSize: 14,
-    fontWeight: '600',
+    lineHeight: 20,
+    fontWeight: '500',
   },
   routeButton: {
-    borderRadius: 14,
+    marginTop: 4,
     backgroundColor: PRIMARY,
-    minHeight: 52,
+    borderRadius: 14,
+    paddingVertical: 13,
     paddingHorizontal: 16,
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    flexDirection: 'row',
     gap: 8,
-    marginTop: 4,
   },
   routeButtonDisabled: {
     opacity: 0.55,
