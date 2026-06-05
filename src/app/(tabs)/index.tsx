@@ -7,6 +7,7 @@ import type { RefObject } from 'react';
 import { Fragment, memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Keyboard,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -299,6 +300,8 @@ type SearchArea = {
   department?: string;
 };
 
+const searchCache = new Map<string, NominatimSuggestion[]>();
+
 export default function MapHomeScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<SearchParams>();
@@ -312,6 +315,7 @@ export default function MapHomeScreen() {
   const [tempSelectedSeverities, setTempSelectedSeverities] = useState<Incident['severity'][]>(DEFAULT_SEVERITIES);
   const [showFilterModal, setShowFilterModal] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [searchFocused, setSearchFocused] = useState(false);
   const [suggestions, setSuggestions] = useState<SearchSuggestion[]>([]);
   const [loadingSuggestions, setLoadingSuggestions] = useState(false);
   const [userCoordinate, setUserCoordinate] = useState<{ latitude: number; longitude: number } | null>(
@@ -492,6 +496,8 @@ export default function MapHomeScreen() {
     setSearchQuery(suggestion.title);
     setSuggestions([]);
     setSearchErrorMessage(null);
+    Keyboard.dismiss();
+    setSearchFocused(false);
   }, []);
 
   const handleSearchQueryChange = useCallback((value: string) => {
@@ -723,7 +729,7 @@ useEffect(() => {
 
   // Search suggestions (Nominatim) with debounce
   useEffect(() => {
-    if (!searchQuery || searchQuery.trim().length === 0) {
+    if (!searchQuery || searchQuery.trim().length < 3) {
       setSuggestions([]);
       setLoadingSuggestions(false);
       setSearchErrorMessage(null);
@@ -799,6 +805,12 @@ useEffect(() => {
         setSearchErrorMessage(null);
 
         const fetchSuggestions = async (queryText: string, mode: 'nearby' | 'global') => {
+          const cacheKey = `${queryText}-${mode}-${userCoordinate?.latitude?.toFixed(2)}`;
+
+          if (searchCache.has(cacheKey)) {
+            return searchCache.get(cacheKey)!;
+          }
+
           const res = await fetch(buildSearchUrl(queryText, mode), {
             signal: controller.signal,
             headers: {
@@ -808,22 +820,25 @@ useEffect(() => {
             },
           });
 
-          if (!res.ok) {
-            return [] as NominatimSuggestion[];
-          }
+          if (!res.ok) return [] as NominatimSuggestion[];
 
           const data = (await res.json().catch(() => [])) as NominatimSuggestion[];
-          return normalizeNominatimPayload(data);
+          const normalized = normalizeNominatimPayload(data);
+          searchCache.set(cacheKey, normalized);
+          return normalized;
         };
 
         const requestPlans: Array<Promise<NominatimSuggestion[]>> = [];
 
         if (userCoordinate) {
-          requestPlans.push(fetchSuggestions(searchVariants[0] ?? searchQuery, 'nearby'));
+          requestPlans.push(fetchSuggestions(searchQuery.trim(), 'nearby'));
+        } else {
+          requestPlans.push(fetchSuggestions(searchQuery.trim(), 'global'));
         }
 
-        for (const variant of searchVariants) {
-          requestPlans.push(fetchSuggestions(variant, 'global'));
+        const intersection = searchVariants[1];
+        if (intersection && intersection !== searchQuery.trim()) {
+          requestPlans.push(fetchSuggestions(intersection, 'global'));
         }
 
         const resultSets = await Promise.all(requestPlans);
@@ -845,7 +860,7 @@ useEffect(() => {
       } finally {
         if (!cancelled) setLoadingSuggestions(false);
       }
-    }, 300);
+    }, 500);
 
     return () => {
       cancelled = true;
@@ -864,6 +879,8 @@ useEffect(() => {
             placeholder="Buscar calle, avenida o carretera"
             placeholderTextColor="#D6D0FF"
             style={styles.searchInput}
+            onFocus={() => setSearchFocused(true)}
+            onBlur={() => setSearchFocused(false)}
           />
           <Pressable onPress={openFilterModal} style={styles.filterButton}>
             <MaterialIcons name="filter-list" size={22} color="#FFFFFF" />
@@ -890,7 +907,7 @@ useEffect(() => {
             />
           ))}
         </ScrollView>
-        {searchQuery.length > 0 ? (
+        {searchQuery.length > 0 && searchFocused ? (
           <View style={styles.suggestionsBoxInline}>
             {loadingSuggestions ? (
               <View style={styles.suggestionRow}><ActivityIndicator size="small" color="#6F61DD" /></View>
