@@ -4,13 +4,6 @@ const BASE_URL = process.env.EXPO_PUBLIC_API_URL
 
 const API_URL = BASE_URL.replace(/\/$/, "");
 
-// === TIPADOS DE DOMINIO ===
-
-export type GeoJSONGeometry = {
-  type: "Point" | "LineString";
-  coordinates: number[] | number[][];
-};
-
 export type EditarReportePayload = {
   titulo: string;
   descripcion: string;
@@ -18,23 +11,73 @@ export type EditarReportePayload = {
   gravedad_reporte: string;
   fecha_inicio: string | null;
   fecha_fin: string | null;
-  geom: GeoJSONGeometry | null;
+  geom: {
+    type: "Point" | "LineString";
+    coordinates: number[] | number[][];
+  } | null;
   url_imagen: string[];
 };
 
-// Interfaz para representar la estructura común de un reporte que viene de tu base de datos
-export interface ReporteData extends EditarReportePayload {
-  id_reporte: string | number;
-  id_usuario: string | number;
-  direccionTexto?: string;
-  created_at?: string;
-  updated_at?: string;
+/**
+ * Genera un string de fecha/hora actual en el formato estricto del backend (dd-mm-YYYY HH:mm)
+ */
+function obtenerFechaActualBackend(): string {
+  const ahora = new Date();
+
+  const dia = String(ahora.getDate()).padStart(2, "0");
+  const mes = String(ahora.getMonth() + 1).padStart(2, "0"); // Enero es 0
+  const anio = ahora.getFullYear();
+
+  const hora = String(ahora.getHours()).padStart(2, "0");
+  const min = String(ahora.getMinutes()).padStart(2, "0");
+
+  return `${dia}-${mes}-${anio} ${hora}:${min}`;
 }
 
 /**
- * Obtiene la lista completa de reportes de la API para alimentar las card_reporte
+ * Convierte de forma exacta el formato de la UI (YYYY/MM/DD | HH:mm) al formato del backend (dd-mm-YYYY HH:mm)
  */
-export async function obtenerReportes(token: string): Promise<ReporteData[]> {
+function formatearFechaEstricta(fechaInput: any): string | null {
+  if (!fechaInput) return null;
+
+  const str = String(fechaInput).trim();
+
+  const regexCorrecto = /^\d{2}-\d{2}-\d{4} \d{2}:\d{2}$/;
+  if (regexCorrecto.test(str)) {
+    return str;
+  }
+
+  const digitos = str.match(/\d+/g);
+
+  if (digitos && digitos.length >= 5) {
+    let primerGrupo = digitos[0];
+
+    let anio = "";
+    let mes = "";
+    let dia = "";
+    let hora = digitos[3].padStart(2, "0");
+    let min = digitos[4].padStart(2, "0");
+
+    if (primerGrupo.length === 4) {
+      anio = primerGrupo;
+      mes = digitos[1].padStart(2, "0");
+      dia = digitos[2].padStart(2, "0");
+    } else {
+      dia = primerGrupo.padStart(2, "0");
+      mes = digitos[1].padStart(2, "0");
+      anio = digitos[2];
+    }
+
+    return `${dia}-${mes}-${anio} ${hora}:${min}`;
+  }
+
+  return null;
+}
+
+/**
+ * Obtiene la lista completa de reportes
+ */
+export async function obtenerReportes(token: string): Promise<any[]> {
   const response = await fetch(`${API_URL}/reporte`, {
     method: "GET",
     headers: {
@@ -42,28 +85,19 @@ export async function obtenerReportes(token: string): Promise<ReporteData[]> {
       Authorization: `Bearer ${token}`,
     },
   });
-
   const responseBody = await response.json().catch(() => null);
-
-  if (!response.ok) {
-    throw new Error(
-      responseBody?.message || "Error al obtener la lista de reportes.",
-    );
-  }
-
-  // Previene fallos si la API encapsula el array en un objeto .data o .reportes
-  return responseBody?.data || responseBody?.reportes || responseBody || [];
+  if (!response.ok)
+    throw new Error(responseBody?.message || "Error al obtener reportes.");
+  return responseBody?.data || responseBody || [];
 }
 
 /**
- * Obtiene un único reporte por su ID para precargar el Store de Edición
+ * Obtiene un único reporte por su ID
  */
 export async function obtenerReportePorId(
   idReporte: string | number,
   token: string,
-): Promise<ReporteData> {
-  if (!idReporte) throw new Error("ID de reporte no provisto.");
-
+): Promise<any> {
   const response = await fetch(`${API_URL}/reporte/${idReporte}`, {
     method: "GET",
     headers: {
@@ -71,59 +105,68 @@ export async function obtenerReportePorId(
       Authorization: `Bearer ${token}`,
     },
   });
-
   const responseBody = await response.json().catch(() => null);
-
-  if (!response.ok) {
-    throw new Error(
-      responseBody?.message || "No se pudo recuperar los datos del reporte.",
-    );
-  }
-
+  if (!response.ok)
+    throw new Error(responseBody?.message || "No se pudo obtener el reporte.");
   return responseBody?.data || responseBody;
 }
 
 /**
- * Envía las modificaciones consolidadas del reporte mediante una petición PUT
+ * Envía las modificaciones del reporte (PATCH)
  */
 export async function actualizarReporte(
   idReporte: string | number,
   payload: EditarReportePayload,
   token: string,
-): Promise<{ message: string; data?: ReporteData }> {
-  if (!idReporte) throw new Error("ID de reporte inválido para actualización.");
+): Promise<{ message: string; data?: any }> {
+  // 1. Construimos la estructura inicial tipando dinámicamente para mutar propiedades si es necesario
+  const payloadFormateado: Record<string, any> = {
+    ...payload,
+  };
+
+  // 2. Aplicamos la lógica condicional estricta
+  if (payload.tipo_reporte === "cierre_programado") {
+    // Si es cierre programado, formateamos lo que viene de la UI obligatoriamente
+    payloadFormateado.fecha_inicio = formatearFechaEstricta(
+      payload.fecha_inicio,
+    );
+    payloadFormateado.fecha_fin = formatearFechaEstricta(payload.fecha_fin);
+  } else {
+    // Para cualquier otro tipo, fijamos el inicio al momento actual y OMITIMOS el fin
+    payloadFormateado.fecha_inicio = obtenerFechaActualBackend();
+
+    // Eliminamos la propiedad por completo para que no sea transmitida en el JSON
+    delete payloadFormateado.fecha_fin;
+  }
+
+  // 🚀 LOG DEPURACIÓN: Comprueba en tu terminal que 'fecha_fin' desaparece en incidentes normales
+  console.log(
+    "================ 🛰️ ENVIANDO AL BACKEND (PATCH) ================\n",
+    `URL: ${API_URL}/reporte/${idReporte}\n`,
+    JSON.stringify(payloadFormateado, null, 2),
+    "\n================================================================",
+  );
 
   const response = await fetch(`${API_URL}/reporte/${idReporte}`, {
-    method: "PUT",
+    method: "PATCH",
     headers: {
       Accept: "application/json",
       "Content-Type": "application/json",
       Authorization: `Bearer ${token}`,
     },
-    body: JSON.stringify(payload),
+    body: JSON.stringify(payloadFormateado),
   });
 
   const responseBody = await response.json().catch(() => null);
 
   if (!response.ok) {
-    // Manejo inteligente de fallos de validación complejos (P. ej: de frameworks tipo Laravel/Express Validation)
     if (responseBody?.errors) {
       const detalle = Object.entries(responseBody.errors)
-        .map(([campo, msgs]: any) => {
-          const mensajeLimpio = Array.isArray(msgs) ? msgs.join(", ") : msgs;
-          return `${campo}: ${mensajeLimpio}`;
-        })
+        .map(([campo, msgs]: any) => `${campo}: ${msgs.join(", ")}`)
         .join(" | ");
       throw new Error(`Fallo de Validación al Editar -> ${detalle}`);
     }
-
-    throw new Error(
-      responseBody?.message ?? "Error interno al actualizar el reporte.",
-    );
+    throw new Error(responseBody?.message ?? "Error al actualizar el reporte.");
   }
-
-  return {
-    message: responseBody?.message || "Reporte actualizado con éxito.",
-    data: responseBody?.data,
-  };
+  return { message: responseBody.message, data: responseBody.data };
 }

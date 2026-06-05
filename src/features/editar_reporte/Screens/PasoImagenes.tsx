@@ -18,7 +18,6 @@ import { uploadImageToCloudinary } from "../services/cloudinaryService";
 import { actualizarReporte } from "../services/editarService";
 import { useEditarReporteStore } from "../store/editarReporteStore";
 
-// Mapa de colores exactos para mantener consistencia con Crear e Información
 const GRAVEDAD_COLORS: Record<string, string> = {
   Bajo: "#00C853",
   Medio: "#FFB300",
@@ -39,12 +38,12 @@ export default function PasoImagenes({
   const [imagenesLocales, setImagenesLocales] = useState<string[]>([]);
   const [imagenesRemotas, setImagenesRemotas] = useState<string[]>([]);
 
-  // Sincronización segura al montar el componente (Modo Edición)
+  // Sincronización segura controlando que no se dupliquen al re-montar el paso
   useEffect(() => {
     if (store.url_imagen && Array.isArray(store.url_imagen)) {
-      setImagenesRemotas([...store.url_imagen]); // Rompemos referencia original
+      setImagenesRemotas(store.url_imagen);
     }
-  }, []);
+  }, [store.url_imagen]);
 
   const totalImagenes = imagenesLocales.length + imagenesRemotas.length;
 
@@ -99,7 +98,7 @@ export default function PasoImagenes({
     try {
       let nuevasUrls: string[] = [];
 
-      // Sube a Cloudinary únicamente las fotos locales capturadas en esta sesión
+      // Subida exclusiva de imágenes nuevas locales
       if (imagenesLocales.length > 0) {
         const promesasSubida = imagenesLocales.map((uri) =>
           uploadImageToCloudinary(uri),
@@ -107,7 +106,7 @@ export default function PasoImagenes({
         nuevasUrls = await Promise.all(promesasSubida);
       }
 
-      // Concatenamos las URLs remotas que no se borraron con las nuevas subidas
+      // Combinación final explícita (Viejas que sobrevivieron + Nuevas de Cloudinary)
       const urlsFinales = [...imagenesRemotas, ...nuevasUrls];
 
       const body = {
@@ -115,8 +114,8 @@ export default function PasoImagenes({
         descripcion: store.descripcion,
         tipo_reporte: store.tipo_reporte!,
         gravedad_reporte: store.gravedad_reporte!,
-        fecha_inicio: store.fecha_inicio,
-        fecha_fin: store.fecha_fin,
+        fecha_inicio: store.fecha_inicio, // Se formateará de forma automática dentro de actualizarReporte()
+        fecha_fin: store.fecha_fin, // Se formateará de forma automática dentro de actualizarReporte()
         geom: store.geom,
         url_imagen: urlsFinales,
       };
@@ -132,7 +131,10 @@ export default function PasoImagenes({
             onPress: () => {
               setImagenesLocales([]);
               setImagenesRemotas([]);
+
+              store.limpiarReporteSeleccionado();
               store.reset();
+
               if (alFinalizar) {
                 alFinalizar();
               } else {
@@ -178,7 +180,6 @@ export default function PasoImagenes({
     );
   };
 
-  // Obtener color dinámico para la badge de gravedad
   const colorGravedadActual =
     GRAVEDAD_COLORS[store.gravedad_reporte || "Bajo"] || "#6347D1";
 
@@ -193,26 +194,28 @@ export default function PasoImagenes({
         </Text>
 
         <View style={styles.imageGrid}>
-          {/* Remotas cargadas previamente */}
+          {/* Remotas (Existentes en la nube) */}
           {imagenesRemotas.map((uri, index) => (
             <View key={`remote-${index}`} style={styles.imageCard}>
               <Image source={{ uri }} style={styles.imagePreview} />
               <TouchableOpacity
                 style={styles.deleteBadge}
                 onPress={() => eliminarImagenRemota(index)}
+                activeOpacity={0.7}
               >
                 <Ionicons name="close" size={14} color="white" />
               </TouchableOpacity>
             </View>
           ))}
 
-          {/* Nuevas locales agregadas en esta sesión de edición */}
+          {/* Locales (Nuevas de la galería de esta sesión) */}
           {imagenesLocales.map((uri, index) => (
             <View key={`local-${index}`} style={styles.imageCard}>
               <Image source={{ uri }} style={styles.imagePreview} />
               <TouchableOpacity
                 style={styles.deleteBadge}
                 onPress={() => eliminarImagenLocal(index)}
+                activeOpacity={0.7}
               >
                 <Ionicons name="close" size={14} color="white" />
               </TouchableOpacity>
@@ -223,6 +226,7 @@ export default function PasoImagenes({
             <TouchableOpacity
               style={styles.addCard}
               onPress={seleccionarImagen}
+              activeOpacity={0.8}
             >
               <Ionicons name="camera-outline" size={28} color="#6347D1" />
               <Text style={styles.addText}>Agregar</Text>
@@ -288,8 +292,9 @@ export default function PasoImagenes({
       <View style={styles.footer}>
         <TouchableOpacity
           onPress={guardarCambios}
-          style={styles.publishBtn}
+          style={[styles.publishBtn, loading && { opacity: 0.7 }]}
           disabled={loading}
+          activeOpacity={0.8}
         >
           {loading ? (
             <ActivityIndicator color="white" />
@@ -299,7 +304,7 @@ export default function PasoImagenes({
                 name="checkmark-circle-outline"
                 size={22}
                 color="white"
-                style={{ marginRight: 8 }}
+                style={{ marginRight: 4 }}
               />
               <Text style={styles.publishText}>Guardar Cambios</Text>
             </>
@@ -318,12 +323,15 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 30,
     marginTop: 10,
   },
-  scrollContent: { padding: 20, paddingBottom: 30 },
+  scrollContent: {
+    padding: 20,
+    paddingBottom: 30,
+  },
   sectionTitle: {
-    fontSize: 15,
+    fontSize: 16,
     fontWeight: "700",
     color: "#333",
-    marginBottom: 14,
+    marginBottom: 15,
     marginTop: 10,
   },
   imageGrid: {
@@ -372,8 +380,18 @@ const styles = StyleSheet.create({
     alignItems: "center",
     backgroundColor: "#F8F7FF",
   },
-  addText: { fontSize: 12, color: "#6347D1", fontWeight: "600", marginTop: 4 },
-  imageCount: { fontSize: 12, color: "#AAA", marginBottom: 22, paddingLeft: 2 },
+  addText: {
+    fontSize: 12,
+    color: "#6347D1",
+    fontWeight: "600",
+    marginTop: 4,
+  },
+  imageCount: {
+    fontSize: 12,
+    color: "#AAA",
+    marginBottom: 22,
+    paddingLeft: 2,
+  },
   summaryCard: {
     backgroundColor: "#F8F9FD",
     borderRadius: 20,
@@ -389,7 +407,12 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: "#EAECEF",
   },
-  summaryLabel: { fontSize: 14, color: "#666", fontWeight: "500", flex: 1 },
+  summaryLabel: {
+    fontSize: 14,
+    color: "#666",
+    fontWeight: "500",
+    flex: 1,
+  },
   summaryValue: {
     fontSize: 14,
     color: "#222",
@@ -411,28 +434,43 @@ const styles = StyleSheet.create({
   },
   badgeGravedad: {
     paddingHorizontal: 12,
-    paddingVertical: 4,
+    paddingVertical: 5,
     borderRadius: 12,
     borderWidth: 1,
     backgroundColor: "#FFF",
   },
-  badgeTextGravedad: { fontSize: 13, fontWeight: "700" },
-  footer: { padding: 20, backgroundColor: "#FFF" },
+  badgeTextGravedad: {
+    fontSize: 13,
+    fontWeight: "700",
+  },
+  footer: {
+    padding: 20,
+    backgroundColor: "#FFF",
+  },
   publishBtn: {
     backgroundColor: "#6347D1",
     flexDirection: "row",
-    padding: 16,
+    paddingVertical: 14,
     borderRadius: 16,
     justifyContent: "center",
     alignItems: "center",
+    gap: 6,
+    width: "100%",
     elevation: 2,
     shadowColor: "#6347D1",
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.2,
     shadowRadius: 5,
   },
-  publishText: { color: "white", fontSize: 16, fontWeight: "700" },
-  ubicacionDetalleContainer: { flex: 1.8, alignItems: "flex-end" },
+  publishText: {
+    color: "white",
+    fontSize: 16,
+    fontWeight: "700",
+  },
+  ubicacionDetalleContainer: {
+    flex: 1.8,
+    alignItems: "flex-end",
+  },
   tipoUbicacionRow: {
     flexDirection: "row",
     alignItems: "center",

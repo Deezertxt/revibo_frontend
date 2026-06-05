@@ -43,7 +43,6 @@ export default function PasoUbicacionEditar() {
 
   useEffect(() => {
     (async () => {
-      // 📝 SI YA EXISTE GEOMETRÍA PREVIA EN EL STORE DE EDICIÓN
       if (geom && geom.coordinates) {
         try {
           if (geom.type === "Point") {
@@ -105,14 +104,13 @@ export default function PasoUbicacionEditar() {
             }, 600);
           }
         } catch (err) {
-          console.error("Error parseando geometría de edición:", err);
+          console.error(err);
         } finally {
           setLoadingGPS(false);
         }
         return;
       }
 
-      // 🛰️ CASO ADICIONAL: FALLBACK GPS (Si por algún motivo el store vino vacío)
       try {
         let { status } = await Location.requestForegroundPermissionsAsync();
         if (status !== "granted") {
@@ -143,7 +141,7 @@ export default function PasoUbicacionEditar() {
             500,
           );
         }, 600);
-      } catch (error) {
+      } catch {
         Alert.alert(
           "Error GPS",
           "No se pudo sincronizar la ubicación satelital.",
@@ -224,7 +222,7 @@ export default function PasoUbicacionEditar() {
         });
       }
     } catch (e) {
-      console.error("Error al trazar ruta con OSRM:", e);
+      console.error(e);
     }
   };
 
@@ -255,7 +253,6 @@ export default function PasoUbicacionEditar() {
     }
   };
 
-  // 🗺️ Conservamos el selector táctil del mapa fiel al original del "Crear"
   const handleMapPress = (e: any) => {
     const { latitude, longitude } = e.nativeEvent.coordinate;
     if (!esTramo) {
@@ -267,7 +264,6 @@ export default function PasoUbicacionEditar() {
 
   const activarModoTramo = () => {
     setEsTramo(true);
-    // Preservamos el micro-desplazamiento original de 0.0001
     const latB = puntoA.latitude - 0.0001;
     const lngB = puntoA.longitude + 0.0001;
     setPuntoB({ latitude: latB, longitude: lngB });
@@ -336,7 +332,6 @@ export default function PasoUbicacionEditar() {
             },
             1000,
           );
-          // Si es tramo, el buscador altera el Punto B (fiel al diseño original)
           if (!esTramo) {
             procesarCambioUbicacion(lat, lon, false);
           } else {
@@ -463,10 +458,6 @@ export default function PasoUbicacionEditar() {
       </View>
 
       <View style={styles.navigationRow}>
-        <TouchableOpacity onPress={() => setStep(0)} style={styles.btnAtras}>
-          <Text style={styles.btnAtrasText}>Atrás</Text>
-        </TouchableOpacity>
-
         <TouchableOpacity
           onPress={manejarConfirmacionFinal}
           style={styles.btnContinuar}
@@ -505,7 +496,9 @@ const styles = StyleSheet.create({
     borderColor: "#EAEAEA",
     zIndex: 1,
   },
-  map: { flex: 1 },
+  map: {
+    flex: 1,
+  },
   loadingGpsContainer: {
     height: 230,
     justifyContent: "center",
@@ -525,16 +518,26 @@ const styles = StyleSheet.create({
   },
   modeBtn: {
     flex: 0.48,
-    paddingVertical: 12,
-    borderRadius: 15,
+    paddingVertical: 14,
+    borderRadius: 20,
     backgroundColor: "#F5F6FA",
     alignItems: "center",
+    justifyContent: "center",
     borderWidth: 1,
     borderColor: "#EAEAEA",
   },
-  modeBtnActive: { backgroundColor: "#6347D1", borderColor: "#6347D1" },
-  modeBtnText: { color: "#777", fontWeight: "600", fontSize: 14 },
-  modeBtnTextActive: { color: "#FFF" },
+  modeBtnActive: {
+    backgroundColor: "#6347D1",
+    borderColor: "#6347D1",
+  },
+  modeBtnText: {
+    color: "#777",
+    fontWeight: "600",
+    fontSize: 14,
+  },
+  modeBtnTextActive: {
+    color: "#FFF",
+  },
   summaryCard: {
     backgroundColor: "#F8F9FD",
     borderRadius: 20,
@@ -556,7 +559,10 @@ const styles = StyleSheet.create({
     textTransform: "uppercase",
     letterSpacing: 0.5,
   },
-  summaryRow: { flexDirection: "row", alignItems: "center" },
+  summaryRow: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
   iconCirclePurple: {
     width: 36,
     height: 36,
@@ -575,39 +581,32 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginRight: 12,
   },
-  textContainer: { flex: 1 },
+  textContainer: {
+    flex: 1,
+  },
   summaryLabel: {
     fontSize: 12,
     color: "#888",
     fontWeight: "500",
     marginBottom: 2,
   },
-  summaryValue: { fontSize: 15, color: "#333", fontWeight: "600" },
+  summaryValue: {
+    fontSize: 15,
+    color: "#333",
+    fontWeight: "600",
+  },
   navigationRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    gap: 10,
+    width: "100%",
+    marginTop: 10,
   },
-  btnAtras: {
-    flex: 0.3,
-    flexDirection: "row",
-    borderWidth: 1.5,
-    borderColor: "#6347D1",
-    padding: 16,
-    borderRadius: 15,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  btnAtrasText: { color: "#6347D1", fontSize: 16, fontWeight: "bold" },
   btnContinuar: {
-    flex: 0.7,
     backgroundColor: "#6347D1",
     flexDirection: "row",
     padding: 18,
     borderRadius: 15,
     justifyContent: "center",
     alignItems: "center",
+    width: "100%",
   },
   btnText: {
     color: "white",
