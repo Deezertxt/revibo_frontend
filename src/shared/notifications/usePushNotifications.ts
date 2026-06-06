@@ -140,7 +140,8 @@ async function registerForPushNotifications() {
     for(let i = 0; i < 5; i++){
         try{
             const tokenData = await Notifications.getExpoPushTokenAsync({
-                projectId: Constants.expoConfig?.extra?.eas?.projectId,
+                projectId: Constants.expoConfig?.extra?.eas?.projectId ??
+                            Constants.easConfig?.projectId
             });
             token = tokenData.data;
             break;

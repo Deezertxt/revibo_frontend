@@ -16,7 +16,7 @@
       "supportsTablet": true
     },
     "android": {
-      "versionCode": 2,
+      "versionCode": 4,
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/logo2redimsin.png",
         "backgroundColor": "#1E1E2E"
@@ -30,11 +30,6 @@
           "apiKey": "AIzaSyChO-LOL51YwtR8q-fhp3U9xEBuDf5UslA"
         }
       }
-    },
-    "web": {
-      "output": "static",
-      "favicon": "./assets/images/logo2redim.png",
-      "bundler": "metro"
     },
     "plugins": [
       "expo-router",
@@ -51,10 +46,7 @@
       "expo-notifications",
       "expo-secure-store"
     ],
-    "experiments": {
-      "typedRoutes": true,
-      "reactCompiler": true
-    },
+    "experiments": {},
     "extra": {
       "router": {},
       "eas": {

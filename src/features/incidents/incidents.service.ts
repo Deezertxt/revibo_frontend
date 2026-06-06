@@ -7,7 +7,7 @@ const BASE_URL = process.env.EXPO_PUBLIC_API_URL
   : "https://revibo-backend.onrender.com/api/v1";
 
 const API_URL = BASE_URL.replace(/\/$/, "");
-const COORDINATE_ORDER = process.env.EXPO_PUBLIC_COORDINATE_ORDER ?? "lat_lng";
+const COORDINATE_ORDER = process.env.EXPO_PUBLIC_COORDINATE_ORDER ?? "lng_lat";
 const REQUEST_TIMEOUT_MS = 12000;
 
 type ApiGeometry = {

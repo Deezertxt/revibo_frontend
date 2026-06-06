@@ -82,7 +82,8 @@ export function useDeviceRegistration() {
           try {
             const tokenData =
               await Notifications.getExpoPushTokenAsync({
-                projectId: Constants.expoConfig?.extra?.eas?.projectId,
+                projectId: Constants.expoConfig?.extra?.eas?.projectId ??
+                            Constants.easConfig?.projectId,
               });
             expoPushToken = tokenData.data;
             break;
