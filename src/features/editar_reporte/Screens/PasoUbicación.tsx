@@ -4,7 +4,6 @@ import React, { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
-  Dimensions,
   ScrollView,
   StyleSheet,
   Text,
@@ -13,19 +12,18 @@ import {
 } from "react-native";
 import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from "react-native-maps";
 import { BuscadorBolivia } from "../componentes/BuscadorBolivia";
-import { useCrearReporteStore } from "../store/crearReporteStore";
+import { useEditarReporteStore } from "../store/editarReporteStore";
 
-const { width } = Dimensions.get("window");
-
-export default function PasoUbicacion() {
-  const { updateData, setStep } = useCrearReporteStore();
-
+export default function PasoUbicacionEditar() {
+  const { geom, direccionTexto, updateData, setStep } = useEditarReporteStore();
   const mapRef = useRef<MapView | null>(null);
 
-  const [puntoA, setPuntoA] = useState({
-    latitude: -17.3935,
-    longitude: -66.1568,
-  });
+  const [puntoA, setPuntoA] = useState<{ latitude: number; longitude: number }>(
+    {
+      latitude: -17.3935,
+      longitude: -66.1568,
+    },
+  );
   const [puntoB, setPuntoB] = useState<{
     latitude: number;
     longitude: number;
@@ -45,44 +43,109 @@ export default function PasoUbicacion() {
 
   useEffect(() => {
     (async () => {
+      if (geom && geom.coordinates) {
+        try {
+          if (geom.type === "Point") {
+            const lng = geom.coordinates[0];
+            const lat = geom.coordinates[1];
+
+            setPuntoA({ latitude: lat, longitude: lng });
+            setEsTramo(false);
+            setDireccionA(direccionTexto || "Dirección cargada");
+
+            setTimeout(() => {
+              mapRef.current?.animateToRegion(
+                {
+                  latitude: lat,
+                  longitude: lng,
+                  latitudeDelta: 0.005,
+                  longitudeDelta: 0.005,
+                },
+                500,
+              );
+            }, 600);
+          } else if (geom.type === "LineString") {
+            const coords = geom.coordinates;
+            const primerPunto = coords[0];
+            const ultimoPunto = coords[coords.length - 1];
+
+            const pA = { latitude: primerPunto[1], longitude: primerPunto[0] };
+            const pB = { latitude: ultimoPunto[1], longitude: ultimoPunto[0] };
+
+            setPuntoA(pA);
+            setPuntoB(pB);
+            setEsTramo(true);
+
+            setCoordenadasRutaVisual(
+              coords.map((c: number[]) => ({
+                latitude: c[1],
+                longitude: c[0],
+              })),
+            );
+
+            if (direccionTexto && direccionTexto.includes(" hasta ")) {
+              const partes = direccionTexto.split(" hasta ");
+              setDireccionA(partes[0]);
+              setDireccionB(partes[1]);
+            } else {
+              setDireccionA(direccionTexto || "Punto de Inicio");
+            }
+
+            setTimeout(() => {
+              mapRef.current?.animateToRegion(
+                {
+                  latitude: pA.latitude,
+                  longitude: pA.longitude,
+                  latitudeDelta: 0.005,
+                  longitudeDelta: 0.005,
+                },
+                500,
+              );
+            }, 600);
+          }
+        } catch (err) {
+          console.error(err);
+        } finally {
+          loadingGPS && setLoadingGPS(false);
+        }
+        return;
+      }
+
       try {
         let { status } = await Location.requestForegroundPermissionsAsync();
         if (status !== "granted") {
-          Alert.alert(
-            "Permiso denegado",
-            "Necesitamos acceso a tu ubicación para centrar el mapa automáticamente.",
-          );
+          Alert.alert("Permiso denegado", "Necesitamos acceso a tu ubicación.");
           setLoadingGPS(false);
           return;
         }
-
         let location = await Location.getCurrentPositionAsync({
           accuracy: Location.Accuracy.Balanced,
         });
-
         const latInicial = location.coords.latitude;
         const lngInicial = location.coords.longitude;
 
-        const nuevaRegion = {
-          latitude: latInicial,
-          longitude: lngInicial,
-          latitudeDelta: 0.004,
-          longitudeDelta: 0.004,
-        };
-
         setPuntoA({ latitude: latInicial, longitude: lngInicial });
-        mapRef.current?.animateToRegion(nuevaRegion, 1000);
-
         updateData({
-          geom: {
-            type: "Point",
-            coordinates: [lngInicial, latInicial],
-          },
+          geom: { type: "Point", coordinates: [lngInicial, latInicial] },
         });
-
         obtenerDireccionTexto(latInicial, lngInicial, false);
-      } catch (error) {
-        Alert.alert("Error de GPS", "No se pudo obtener la ubicación actual.");
+
+        setTimeout(() => {
+          mapRef.current?.animateToRegion(
+            {
+              latitude: latInicial,
+              longitude: lngInicial,
+              latitudeDelta: 0.005,
+              longitudeDelta: 0.005,
+            },
+            500,
+          );
+        }, 600);
+      } catch {
+        Alert.alert(
+          "Error GPS",
+          "No se pudo sincronizar la ubicación satelital.",
+        );
       } finally {
         setLoadingGPS(false);
       }
@@ -109,19 +172,27 @@ export default function PasoUbicacion() {
 
       if (!esPuntoB) {
         setDireccionA(calle);
-        updateData({ direccionTexto: calle });
+        updateData({
+          direccionTexto:
+            esTramo && direccionB ? `${calle} hasta ${direccionB}` : calle,
+        });
       } else {
         setDireccionB(calle);
         updateData({ direccionTexto: `${direccionA} hasta ${calle}` });
       }
-    } catch (error) {
-      const fallbackError = "Dirección desconocida";
+    } catch {
+      const fallback = "Dirección desconocida";
       if (!esPuntoB) {
-        setDireccionA(fallbackError);
-        updateData({ direccionTexto: fallbackError });
+        setDireccionA(fallback);
+        updateData({
+          direccionTexto:
+            esTramo && direccionB
+              ? `${fallback} hasta ${direccionB}`
+              : fallback,
+        });
       } else {
-        setDireccionB(fallbackError);
-        updateData({ direccionTexto: `${direccionA} hasta ${fallbackError}` });
+        setDireccionB(fallback);
+        updateData({ direccionTexto: `${direccionA} hasta ${fallback}` });
       }
     } finally {
       setLoadingDireccion(false);
@@ -138,28 +209,20 @@ export default function PasoUbicacion() {
       const url = `https://router.project-osrm.org/route/v1/driving/${lngA},${latA};${lngB},${latB}?overview=full&geometries=geojson`;
       const response = await fetch(url);
       const data = await response.json();
-
       if (data.code === "Ok" && data.routes?.length > 0) {
         const geometryCoordinates = data.routes[0].geometry.coordinates;
-
-        const puntosFormatoMapa = geometryCoordinates.map(
-          (coord: number[]) => ({
-            latitude: coord[1],
-            longitude: coord[0],
-          }),
+        setCoordenadasRutaVisual(
+          geometryCoordinates.map((c: number[]) => ({
+            latitude: c[1],
+            longitude: c[0],
+          })),
         );
-
-        setCoordenadasRutaVisual(puntosFormatoMapa);
-
         updateData({
-          geom: {
-            type: "LineString",
-            coordinates: geometryCoordinates,
-          },
+          geom: { type: "LineString", coordinates: geometryCoordinates },
         });
       }
-    } catch (error) {
-      console.error("Error en el cálculo de ruta con OSRM:", error);
+    } catch (e) {
+      console.error(e);
     }
   };
 
@@ -168,34 +231,25 @@ export default function PasoUbicacion() {
     lng: number,
     esFin: boolean,
   ) => {
-    if (debounceTimer.current) {
-      clearTimeout(debounceTimer.current);
-    }
-
+    if (debounceTimer.current) clearTimeout(debounceTimer.current);
     if (!esFin) {
       setPuntoA({ latitude: lat, longitude: lng });
-
       if (esTramo && puntoB) {
         calcularRutaGratis(lat, lng, puntoB.latitude, puntoB.longitude);
       } else {
-        updateData({
-          geom: {
-            type: "Point",
-            coordinates: [lng, lat],
-          },
-        });
+        updateData({ geom: { type: "Point", coordinates: [lng, lat] } });
       }
-
-      debounceTimer.current = window.setTimeout(() => {
-        obtenerDireccionTexto(lat, lng, false);
-      }, 600);
+      debounceTimer.current = setTimeout(
+        () => obtenerDireccionTexto(lat, lng, false),
+        600,
+      );
     } else {
       setPuntoB({ latitude: lat, longitude: lng });
       calcularRutaGratis(puntoA.latitude, puntoA.longitude, lat, lng);
-
-      debounceTimer.current = window.setTimeout(() => {
-        obtenerDireccionTexto(lat, lng, true);
-      }, 600);
+      debounceTimer.current = setTimeout(
+        () => obtenerDireccionTexto(lat, lng, true),
+        600,
+      );
     }
   };
 
@@ -210,10 +264,8 @@ export default function PasoUbicacion() {
 
   const activarModoTramo = () => {
     setEsTramo(true);
-
     const latB = puntoA.latitude - 0.0001;
     const lngB = puntoA.longitude + 0.0001;
-
     setPuntoB({ latitude: latB, longitude: lngB });
     calcularRutaGratis(puntoA.latitude, puntoA.longitude, latB, lngB);
     obtenerDireccionTexto(latB, lngB, true);
@@ -224,53 +276,77 @@ export default function PasoUbicacion() {
     setPuntoB(null);
     setDireccionB("");
     setCoordenadasRutaVisual([]);
-
     updateData({
-      geom: {
-        type: "Point",
-        coordinates: [puntoA.longitude, puntoA.latitude],
-      },
+      geom: { type: "Point", coordinates: [puntoA.longitude, puntoA.latitude] },
       direccionTexto: direccionA,
     });
   };
 
-  const manejarUbicacionBuscador = (
-    direccion: string,
-    lat: number,
-    lon: number,
-  ) => {
-    mapRef.current?.animateToRegion(
-      {
-        latitude: lat,
-        longitude: lon,
-        latitudeDelta: 0.004,
-        longitudeDelta: 0.004,
-      },
-      1000,
-    );
-
-    if (!esTramo) {
-      procesarCambioUbicacion(lat, lon, false);
+  const manejarConfirmacionFinal = () => {
+    if (esTramo) {
+      if (!puntoB || coordenadasRutaVisual.length === 0) {
+        Alert.alert(
+          "Atención",
+          "Trazando la ruta del tramo, por favor espere un momento...",
+        );
+        return;
+      }
+      const geojsonCoordinates = coordenadasRutaVisual.map((c) => [
+        c.longitude,
+        c.latitude,
+      ]);
+      updateData({
+        geom: { type: "LineString", coordinates: geojsonCoordinates },
+        direccionTexto: direccionB
+          ? `${direccionA} hasta ${direccionB}`
+          : direccionA,
+      });
     } else {
-      procesarCambioUbicacion(lat, lon, true);
+      updateData({
+        geom: {
+          type: "Point",
+          coordinates: [puntoA.longitude, puntoA.latitude],
+        },
+        direccionTexto: direccionA,
+      });
     }
+    setStep(2);
   };
 
   return (
     <ScrollView
       style={styles.mainContainer}
-      contentContainerStyle={{ paddingBottom: 20 }}
+      contentContainerStyle={{ paddingBottom: 40 }}
       keyboardShouldPersistTaps="handled"
     >
-      <Text style={styles.sectionTitle}>Ubicación del incidente</Text>
+      <Text style={styles.sectionTitle}>Ubicación del incidente (Edición)</Text>
 
-      <BuscadorBolivia onLocationSelect={manejarUbicacionBuscador} />
+      <BuscadorBolivia
+        onLocationSelect={(_, lat, lon) => {
+          mapRef.current?.animateToRegion(
+            {
+              latitude: lat,
+              longitude: lon,
+              latitudeDelta: 0.005,
+              longitudeDelta: 0.005,
+            },
+            1000,
+          );
+          if (!esTramo) {
+            procesarCambioUbicacion(lat, lon, false);
+          } else {
+            procesarCambioUbicacion(lat, lon, true);
+          }
+        }}
+      />
 
       <View style={styles.mapWrapper}>
         {loadingGPS ? (
           <View style={styles.loadingGpsContainer}>
             <ActivityIndicator size="large" color="#6347D1" />
-            <Text style={styles.loadingGpsText}>Buscando señal GPS...</Text>
+            <Text style={styles.loadingGpsText}>
+              Sincronizando coordenadas del reporte...
+            </Text>
           </View>
         ) : (
           <MapView
@@ -333,7 +409,6 @@ export default function PasoUbicacion() {
             Punto Fijo
           </Text>
         </TouchableOpacity>
-
         <TouchableOpacity
           style={[styles.modeBtn, esTramo && styles.modeBtnActive]}
           onPress={activarModoTramo}
@@ -353,7 +428,6 @@ export default function PasoUbicacion() {
             <ActivityIndicator size="small" color="#6347D1" />
           )}
         </View>
-
         <View style={styles.summaryRow}>
           <View style={styles.iconCirclePurple}>
             <Ionicons name="pin" size={16} color="#6347D1" />
@@ -367,7 +441,6 @@ export default function PasoUbicacion() {
             </Text>
           </View>
         </View>
-
         {esTramo && (
           <View style={[styles.summaryRow, { marginTop: 12 }]}>
             <View style={styles.iconCircleRed}>
@@ -385,10 +458,15 @@ export default function PasoUbicacion() {
         )}
       </View>
 
-      <TouchableOpacity onPress={() => setStep(2)} style={styles.btnContinuar}>
-        <Text style={styles.btnText}>Confirmar y Continuar</Text>
-        <Ionicons name="arrow-forward" size={20} color="white" />
-      </TouchableOpacity>
+      <View style={styles.navigationRow}>
+        <TouchableOpacity
+          onPress={manejarConfirmacionFinal}
+          style={styles.btnContinuar}
+        >
+          <Text style={styles.btnText}>Guardar Cambios</Text>
+          <Ionicons name="arrow-forward" size={20} color="white" />
+        </TouchableOpacity>
+      </View>
     </ScrollView>
   );
 }
@@ -441,10 +519,11 @@ const styles = StyleSheet.create({
   },
   modeBtn: {
     flex: 0.48,
-    paddingVertical: 12,
-    borderRadius: 15,
+    paddingVertical: 14,
+    borderRadius: 20,
     backgroundColor: "#F5F6FA",
     alignItems: "center",
+    justifyContent: "center",
     borderWidth: 1,
     borderColor: "#EAEAEA",
   },
@@ -456,6 +535,9 @@ const styles = StyleSheet.create({
     color: "#777",
     fontWeight: "600",
     fontSize: 14,
+  },
+  modeBtnActiveText: {
+    color: "#FFF",
   },
   modeBtnTextActive: {
     color: "#FFF",
@@ -517,6 +599,10 @@ const styles = StyleSheet.create({
     color: "#333",
     fontWeight: "600",
   },
+  navigationRow: {
+    width: "100%",
+    marginTop: 10,
+  },
   btnContinuar: {
     backgroundColor: "#6347D1",
     flexDirection: "row",
@@ -524,6 +610,7 @@ const styles = StyleSheet.create({
     borderRadius: 15,
     justifyContent: "center",
     alignItems: "center",
+    width: "100%",
   },
   btnText: {
     color: "white",

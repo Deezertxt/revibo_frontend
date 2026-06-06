@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
-import { useFocusEffect, useRouter } from "expo-router";
-import React, { useCallback, useEffect, useRef } from "react";
+import { useRouter } from "expo-router";
+import React, { useEffect } from "react";
 import {
   Alert,
   BackHandler,
@@ -11,37 +11,35 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useCrearReporteStore } from "./store/crearReporteStore";
 
-import PasoImagenes from "./screens/PasoImegenes";
-import PasoInformacion from "./screens/PasoInformacion";
-import PasoUbicacion from "./screens/PasoUbicación";
+import PasoImagenes from "./Screens/PasoImagenes";
+import PasoInformacion from "./Screens/PasoInformacion";
+import PasoUbicacion from "./Screens/PasoUbicación";
 
-export default function CrearReporteFeature() {
+import { useEditarReporteStore } from "./store/editarReporteStore";
+
+export default function EditarReporteFeature() {
   const router = useRouter();
-  const step = useCrearReporteStore((state) => state.step);
-  const setStep = useCrearReporteStore((state) => state.setStep);
-  const limpiarStore = useCrearReporteStore((state) => state.limpiarStore);
+  const step = useEditarReporteStore((state) => state.step ?? 0);
+  const setStep = useEditarReporteStore((state) => state.setStep);
+  const reporteSeleccionado = useEditarReporteStore(
+    (state) => state.reporteSeleccionado,
+  );
+  const reset = useEditarReporteStore((state) => state.reset);
 
   const titles = ["Información", "Ubicación", "Resumen"];
 
-  const stepRef = useRef(step);
-
-  useEffect(() => {
-    stepRef.current = step;
-  }, [step]);
-
   const confirmarSalida = () => {
     Alert.alert(
-      "¿Abandonar reporte?",
-      "Si sales ahora, se borrarán todos los datos que hayas introducido para este nuevo reporte.",
+      "¿Descartar cambios?",
+      "Si sales ahora, perderás las modificaciones realizadas en este reporte.",
       [
-        { text: "Continuar llenando", style: "cancel" },
+        { text: "Continuar editando", style: "cancel" },
         {
-          text: "Salir y borrar",
+          text: "Descartar",
           style: "destructive",
           onPress: () => {
-            limpiarStore();
+            reset();
             router.push("/(tabs)/reportes_menu");
           },
         },
@@ -57,28 +55,27 @@ export default function CrearReporteFeature() {
     }
   };
 
-  useFocusEffect(
-    useCallback(() => {
-      const backAction = () => {
-        if (stepRef.current > 0) {
-          setStep(stepRef.current - 1);
-          return true;
-        } else {
-          confirmarSalida();
-          return true;
-        }
-      };
+  useEffect(() => {
+    const backAction = () => {
+      if (step > 0) {
+        setStep(step - 1);
+        return true;
+      } else {
+        confirmarSalida();
+        return true;
+      }
+    };
 
-      const backHandler = BackHandler.addEventListener(
-        "hardwareBackPress",
-        backAction,
-      );
+    const backHandler = BackHandler.addEventListener(
+      "hardwareBackPress",
+      backAction,
+    );
+    return () => backHandler.remove();
+  }, [step]);
 
-      return () => backHandler.remove();
-    }, []),
-  );
+  if (!reporteSeleccionado) return null;
 
-  const renderContent = () => {
+  const renderPasoActual = () => {
     switch (step) {
       case 0:
         return <PasoInformacion />;
@@ -100,10 +97,12 @@ export default function CrearReporteFeature() {
           <TouchableOpacity onPress={handleBack} style={styles.backButton}>
             <Ionicons name="arrow-back" size={24} color="white" />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>Crear reporte</Text>
+          <Text style={styles.headerTitle}>Editar reporte</Text>
         </View>
 
-        <Text style={styles.headerSubtitle}>{titles[step]}</Text>
+        <Text style={[styles.headerSubtitle, { marginLeft: 36 }]}>
+          {titles[step]}
+        </Text>
 
         <View style={styles.progressContainer}>
           {[0, 1, 2].map((i) => (
@@ -118,7 +117,7 @@ export default function CrearReporteFeature() {
         </View>
       </View>
 
-      <View style={styles.content}>{renderContent()}</View>
+      <View style={styles.content}>{renderPasoActual()}</View>
     </SafeAreaView>
   );
 }
@@ -151,7 +150,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: "rgba(255,255,255,0.7)",
     marginTop: 5,
-    marginLeft: 36,
   },
   progressContainer: {
     flexDirection: "row",

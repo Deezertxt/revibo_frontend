@@ -65,17 +65,15 @@ export default function TabLayout() {
       />
 
       <Tabs.Screen
-        name="crear_reportes"
+        name="reportes_menu"
         options={{
-          title: "Reportar",
+          title: "Reportes",
           tabBarIcon: ({ color }) => (
             <FontAwesome name="pencil" size={24} color={color} />
           ),
           href:
-            rol === "admin" ||
-            rol === "autoridad" ||
-            rol === "moderador"
-              ? "/(tabs)/crear_reportes"
+            rol === "admin" || rol === "autoridad"
+              ? "/(tabs)/reportes_menu"
               : (null as any),
         }}
       />
@@ -116,6 +114,9 @@ export default function TabLayout() {
       />
 
       <Tabs.Screen name="explore" options={{ href: null }} />
+      <Tabs.Screen name="crear_reportes" options={{ href: null }} />
+      <Tabs.Screen name="editar_reporte" options={{ href: null }} />
+      <Tabs.Screen name="eliminar_reporte" options={{ href: null }} />
     </Tabs>
   );
 }

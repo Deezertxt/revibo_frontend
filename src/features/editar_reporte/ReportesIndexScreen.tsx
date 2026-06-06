@@ -1,0 +1,316 @@
+import { Ionicons } from "@expo/vector-icons";
+import { useRouter } from "expo-router";
+import React, { useEffect, useState } from "react";
+import {
+  ActivityIndicator,
+  BackHandler,
+  FlatList,
+  RefreshControl,
+  StatusBar,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from "react-native";
+
+import { useAuthStore } from "../../shared/store/useAuthStore";
+import { ReporteCard } from "./componentes/card_reporte";
+import { obtenerReportes } from "./services/editarService";
+import { useEditarReporteStore } from "./store/editarReporteStore";
+
+import EditarReporteFeature from "./index";
+
+async function obtenerNombreCalle(lat: number, lng: number): Promise<string> {
+  try {
+    const response = await fetch(
+      `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}`,
+      { headers: { "User-Agent": "ReviboApp" } },
+    );
+    const data = await response.json();
+    return (
+      data.address?.road ||
+      data.address?.suburb ||
+      data.display_name ||
+      "Ubicación desconocida"
+    );
+  } catch (error) {
+    return "Ubicación no especificada";
+  }
+}
+
+export default function ReportesIndexScreen() {
+  const router = useRouter();
+  const reporteSeleccionado = useEditarReporteStore(
+    (state) => state.reporteSeleccionado,
+  );
+  const cargarReporteParaEditar = useEditarReporteStore(
+    (state) => state.cargarReporteParaEditar,
+  );
+
+  const limpiarReporteSeleccionado = useEditarReporteStore(
+    (state) => state.limpiarReporteSeleccionado,
+  );
+
+  const accessToken = useAuthStore((state) => state.accessToken);
+
+  const [reportes, setReportes] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleBack = () => {
+    if (reporteSeleccionado) {
+      if (typeof limpiarReporteSeleccionado === "function") {
+        limpiarReporteSeleccionado();
+      } else {
+        cargarReporteParaEditar(null);
+      }
+    } else {
+      router.push("/(tabs)/reportes_menu");
+    }
+  };
+
+  useEffect(() => {
+    const backAction = () => {
+      handleBack();
+      return true;
+    };
+
+    const backHandler = BackHandler.addEventListener(
+      "hardwareBackPress",
+      backAction,
+    );
+
+    return () => backHandler.remove();
+  }, [reporteSeleccionado]);
+
+  const cargarReportesDesdeApi = async (mostrarLoaderSilencioso = false) => {
+    if (!accessToken) {
+      setError("No se detectó una sesión activa.");
+      setLoading(false);
+      return;
+    }
+    if (!mostrarLoaderSilencioso) setLoading(true);
+    setError(null);
+
+    try {
+      const data = await obtenerReportes(accessToken);
+      const listaReportes = Array.isArray(data) ? data : [];
+
+      const reportesConCalle = await Promise.all(
+        listaReportes.map(async (reporte) => {
+          if (reporte.geom && reporte.geom.type === "Point") {
+            const [lng, lat] = reporte.geom.coordinates;
+            const calle = await obtenerNombreCalle(lat, lng);
+            return { ...reporte, direccionTexto: calle };
+          }
+          if (reporte.geom && reporte.geom.type === "LineString") {
+            const [lng, lat] = reporte.geom.coordinates[0];
+            const calle = await obtenerNombreCalle(lat, lng);
+            return { ...reporte, direccionTexto: calle };
+          }
+          return reporte;
+        }),
+      );
+
+      setReportes(reportesConCalle);
+    } catch (err: any) {
+      setError(err.message || "Ocurrió un error al cargar los reportes.");
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  };
+
+  useEffect(() => {
+    cargarReportesDesdeApi();
+  }, [accessToken]);
+
+  const manejarRefresh = () => {
+    setRefreshing(true);
+    cargarReportesDesdeApi(true);
+  };
+
+  if (loading && !refreshing) {
+    return (
+      <View style={[styles.mainContainer, styles.centerContainer]}>
+        <StatusBar barStyle="light-content" backgroundColor="#6347D1" />
+        <ActivityIndicator size="large" color="#FFF" />
+        <Text style={styles.loadingText}>Cargando reporte...</Text>
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.mainContainer}>
+      <StatusBar barStyle="light-content" backgroundColor="#6347D1" />
+
+      {reporteSeleccionado ? (
+        <View style={{ flex: 1 }}>
+          <EditarReporteFeature />
+        </View>
+      ) : (
+        <>
+          <View style={styles.headerContainer}>
+            <View style={styles.headerLeft}>
+              <TouchableOpacity onPress={handleBack} style={styles.backButton}>
+                <Ionicons name="arrow-back" size={24} color="#FFF" />
+              </TouchableOpacity>
+              <Text style={styles.headerTitle}>Edita tus reportes</Text>
+              <Text style={styles.headerSubtitle}></Text>
+            </View>
+            <TouchableOpacity
+              style={styles.syncButton}
+              onPress={() => cargarReportesDesdeApi()}
+            >
+              <Ionicons name="refresh" size={20} color="#FFF" />
+            </TouchableOpacity>
+          </View>
+
+          {error ? (
+            <View style={styles.centerContainer}>
+              <Ionicons
+                name="cloud-offline-outline"
+                size={50}
+                color="#E0D7FF"
+              />
+              <Text style={styles.errorText}>{error}</Text>
+              <TouchableOpacity
+                style={styles.retryButton}
+                onPress={() => cargarReportesDesdeApi()}
+              >
+                <Text style={styles.retryButtonText}>Reintentar</Text>
+              </TouchableOpacity>
+            </View>
+          ) : reportes.length === 0 ? (
+            <FlatList
+              data={[]}
+              renderItem={null}
+              contentContainerStyle={styles.listContent}
+              ListEmptyComponent={
+                <View style={styles.emptyContainer}>
+                  <Text style={styles.emptyTitle}>
+                    No hay reportes registrados
+                  </Text>
+                </View>
+              }
+              refreshControl={
+                <RefreshControl
+                  refreshing={refreshing}
+                  onRefresh={manejarRefresh}
+                  colors={["#6347D1"]}
+                  tintColor="#FFF"
+                />
+              }
+            />
+          ) : (
+            <FlatList
+              data={reportes}
+              contentContainerStyle={styles.listContent}
+              keyExtractor={(item) =>
+                String(item.id_reporte || item.id || Math.random())
+              }
+              renderItem={({ item }) => (
+                <ReporteCard
+                  item={{
+                    ...item,
+                    es_tramo: item.geom?.type === "LineString",
+                    coordenadas_trazo: item.geom?.coordinates,
+                  }}
+                  onPressEditar={() => cargarReporteParaEditar(item)}
+                />
+              )}
+            />
+          )}
+        </>
+      )}
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  mainContainer: { flex: 1, backgroundColor: "#6347D1" },
+  headerContainer: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingHorizontal: 20,
+    paddingTop: 45,
+    paddingBottom: 20,
+    backgroundColor: "#6347D1",
+    borderBottomWidth: 1,
+    borderColor: "#6347D1",
+  },
+  headerLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  backButton: {
+    padding: 4,
+    marginLeft: -4,
+  },
+  headerSubtitle: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: "#E0D7FF",
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+  },
+  headerTitle: { fontSize: 24, fontWeight: "bold", color: "#FFF" },
+  syncButton: {
+    backgroundColor: "rgba(255, 255, 255, 0.15)",
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  centerContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 30,
+  },
+  loadingText: {
+    marginTop: 14,
+    fontSize: 15,
+    color: "#FFF",
+    fontWeight: "500",
+  },
+  listContent: { padding: 16, paddingTop: 12, paddingBottom: 30 },
+  errorText: {
+    fontSize: 15,
+    color: "#FFD2D2",
+    textAlign: "center",
+    marginTop: 12,
+    marginBottom: 20,
+    fontWeight: "500",
+  },
+  retryButton: {
+    backgroundColor: "#FFF",
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 12,
+  },
+  retryButtonText: { color: "#6347D1", fontWeight: "bold", fontSize: 14 },
+  emptyContainer: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 80,
+    paddingHorizontal: 20,
+  },
+  emptyTitle: {
+    fontSize: 18,
+    fontWeight: "bold",
+    color: "#FFF",
+    marginTop: 16,
+  },
+  emptySubtitle: {
+    fontSize: 14,
+    color: "#E0D7FF",
+    textAlign: "center",
+    marginTop: 8,
+    lineHeight: 20,
+  },
+});
