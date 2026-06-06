@@ -189,11 +189,6 @@ export default function ReportesIndexScreen() {
               contentContainerStyle={styles.listContent}
               ListEmptyComponent={
                 <View style={styles.emptyContainer}>
-                  <Ionicons
-                    name="document-text-outline"
-                    size={60}
-                    color="#E0D7FF"
-                  />
                   <Text style={styles.emptyTitle}>
                     No hay reportes registrados
                   </Text>
