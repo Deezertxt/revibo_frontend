@@ -1,5 +1,5 @@
 import { buildRoutePreview } from '@/features/rutas/services/rutas.service';
-import { buildRouteSummary, type RouteCoordinate, type RouteDraft, type SavedRoute } from '@/features/rutas/types';
+import { summarizeRouteMarkers, type RouteCoordinate, type RouteDraft, type SavedRoute } from '@/features/rutas/types';
 import { useAuthStore } from '@/shared/store/useAuthStore';
 
 const BASE_URL = process.env.EXPO_PUBLIC_API_URL
@@ -53,22 +53,41 @@ function toCoordinates(rawCoordinates: Array<[number, number]>): RouteCoordinate
   return rawCoordinates.map(([longitude, latitude]) => ({ latitude, longitude }));
 }
 
+function deriveMarkerCoordinates(coordinates: RouteCoordinate[]): RouteCoordinate[] {
+  if (coordinates.length <= 2) {
+    return coordinates;
+  }
+
+  const middleIndex = Math.floor(coordinates.length / 2);
+  const markers = [coordinates[0], coordinates[middleIndex], coordinates[coordinates.length - 1]];
+
+  return markers.filter((coordinate, index, all) => {
+    const previousIndex = all.findIndex(
+      (candidate) => candidate.latitude === coordinate.latitude && candidate.longitude === coordinate.longitude,
+    );
+
+    return previousIndex === index;
+  });
+}
+
 function toSavedRoute(resource: BackendRouteResource, fallback: Partial<SavedRoute> = {}): SavedRoute {
   const origin = resource.nombre_origen?.trim() || 'Origen';
   const destination = resource.nombre_destino?.trim() || 'Destino';
-  const summaryStops = fallback.stops?.length ? fallback.stops : [origin, destination];
   const geometry = parseGeometry(resource.geom_ruta ?? resource.geom_Json);
   const coordinates = geometry.length > 0 ? toCoordinates(geometry) : fallback.coordinates ?? [];
+  const markerCoordinates = fallback.markerCoordinates?.length
+    ? fallback.markerCoordinates
+    : deriveMarkerCoordinates(coordinates);
   const createdAt = fallback.createdAt ?? new Date().toISOString();
   const updatedAt = fallback.updatedAt ?? createdAt;
 
   return {
     id: resource.id_ruta,
     name: resource.nombre?.trim() || fallback.name || `${origin} → ${destination}`,
-    stops: summaryStops,
-    summary: buildRouteSummary(summaryStops),
+    summary: fallback.summary ?? summarizeRouteMarkers(markerCoordinates),
     routeType: fallback.routeType ?? 'alternativa',
     distanceKm: Number(resource.distancia_km ?? fallback.distanceKm ?? 0),
+    markerCoordinates,
     coordinates,
     createdAt,
     updatedAt,
@@ -117,9 +136,6 @@ export async function createRouteOnBackend(
     throw new Error('Necesitas iniciar sesión para guardar una ruta.');
   }
 
-  const normalizedStops = draft.stops
-    .map((stop: string) => stop.trim())
-    .filter((stop: string) => stop.length > 0);
   const routeCoordinates = preview.coordinates.length > 1
     ? preview.coordinates
     : preview.coordinates.length === 1
@@ -144,8 +160,8 @@ export async function createRouteOnBackend(
       nombre: draft.name.trim(),
       distancia: Math.max(1, Math.round(preview.distanceKm)),
       tiempo: Math.max(1, Math.round((preview.distanceKm / 40) * 3600)),
-      origen_nombre: normalizedStops[0] ?? draft.name.trim(),
-      destino_nombre: normalizedStops[normalizedStops.length - 1] ?? draft.name.trim(),
+      origen_nombre: 'Marcador inicial',
+      destino_nombre: 'Marcador final',
       origen_lat: originCoordinate.latitude,
       origen_lng: originCoordinate.longitude,
       destino_lat: destinationCoordinate.latitude,
@@ -165,10 +181,10 @@ export async function createRouteOnBackend(
 
   return toSavedRoute(responseBody.data, {
     name: draft.name.trim(),
-    stops: normalizedStops,
-    summary: buildRouteSummary(normalizedStops),
+    summary: summarizeRouteMarkers(draft.markerCoordinates),
     routeType: draft.routeType,
     distanceKm: preview.distanceKm,
+    markerCoordinates: draft.markerCoordinates,
     coordinates: preview.coordinates,
   });
 }
@@ -186,9 +202,6 @@ export async function updateRouteOnBackend(
     throw new Error('Necesitas iniciar sesión para actualizar una ruta.');
   }
 
-  const normalizedStops = draft.stops
-    .map((stop: string) => stop.trim())
-    .filter((stop: string) => stop.length > 0);
   const routeCoordinates = preview.coordinates.length > 1
     ? preview.coordinates
     : preview.coordinates.length === 1
@@ -213,8 +226,8 @@ export async function updateRouteOnBackend(
       nombre: draft.name.trim(),
       distancia: Math.max(1, Math.round(preview.distanceKm)),
       tiempo: Math.max(1, Math.round((preview.distanceKm / 40) * 3600)),
-      origen_nombre: normalizedStops[0] ?? draft.name.trim(),
-      destino_nombre: normalizedStops[normalizedStops.length - 1] ?? draft.name.trim(),
+      origen_nombre: 'Marcador inicial',
+      destino_nombre: 'Marcador final',
       origen_lat: originCoordinate.latitude,
       origen_lng: originCoordinate.longitude,
       destino_lat: destinationCoordinate.latitude,
@@ -235,10 +248,10 @@ export async function updateRouteOnBackend(
   return toSavedRoute(responseBody.data, {
     id: routeId,
     name: draft.name.trim(),
-    stops: normalizedStops,
-    summary: buildRouteSummary(normalizedStops),
+    summary: summarizeRouteMarkers(draft.markerCoordinates),
     routeType: draft.routeType,
     distanceKm: preview.distanceKm,
+    markerCoordinates: draft.markerCoordinates,
     coordinates: preview.coordinates,
     createdAt: fallbackRoute?.createdAt,
     updatedAt: new Date().toISOString(),

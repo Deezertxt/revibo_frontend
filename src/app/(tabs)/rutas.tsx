@@ -1,26 +1,30 @@
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
+import * as Location from 'expo-location';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ActivityIndicator,
-  Alert,
-  KeyboardAvoidingView,
-  Platform,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View
+    ActivityIndicator,
+    Alert,
+    KeyboardAvoidingView,
+    Platform,
+    Pressable,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TextInput,
+    View
 } from 'react-native';
+import MapView, { Marker, Polyline, Region } from 'react-native-maps';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { buildRoutePreview } from '@/features/rutas/services/rutas.service';
 import { useRoutesStore } from '@/features/rutas/store/rutasStore';
 import {
-  ROUTE_STOP_COLORS,
-  formatRouteDistance,
-  type RouteDraft,
-  type SavedRoute,
+    ROUTE_STOP_COLORS,
+    formatRouteDistance,
+    type RouteCoordinate,
+    type RouteDraft,
+    type SavedRoute,
 } from '@/features/rutas/types';
 import { useAuthStore } from '@/shared/store/useAuthStore';
 
@@ -39,6 +43,17 @@ const BACKGROUND = '#F4F1FF';
 const SURFACE = '#FFFFFF';
 const TEXT_MAIN = '#2F2B3A';
 const TEXT_MUTED = '#7D7891';
+const DEFAULT_MAP_REGION: Region = {
+  latitude: -17.3935,
+  longitude: -66.157,
+  latitudeDelta: 0.08,
+  longitudeDelta: 0.08,
+};
+
+const DEFAULT_MAP_COORDINATE: RouteCoordinate = {
+  latitude: DEFAULT_MAP_REGION.latitude,
+  longitude: DEFAULT_MAP_REGION.longitude,
+};
 
 export default function RutasScreen() {
   const router = useRouter();
@@ -163,7 +178,7 @@ export default function RutasScreen() {
   }
 
   return (
-    <View style={[styles.screen, { paddingTop: insets.top }]}>
+    <View style={[styles.screen, { paddingTop: insets.top, backgroundColor: PRIMARY }]}> 
       <View style={styles.header}>
         <Text style={styles.headerEyebrow}>NAVEGACIÓN</Text>
         <Text style={styles.headerTitle}>Rutas</Text>
@@ -171,7 +186,7 @@ export default function RutasScreen() {
       </View>
 
       <ScrollView
-        style={styles.body}
+        style={[styles.body, { backgroundColor: SURFACE }]}
         contentContainerStyle={[styles.bodyContent, { paddingBottom: insets.bottom + 18 }]}
         showsVerticalScrollIndicator={false}
       >
@@ -181,7 +196,7 @@ export default function RutasScreen() {
           </View>
           <View style={styles.createTextWrap}>
             <Text style={styles.createTitle}>Crear ruta personalizada</Text>
-            <Text style={styles.createSubtitle}>Definí origen, destino y paradas</Text>
+            <Text style={styles.createSubtitle}>Marcá el recorrido directamente en el mapa</Text>
           </View>
           <MaterialIcons name="chevron-right" size={24} color="#8A86A3" />
         </Pressable>
@@ -235,51 +250,121 @@ function RouteFormScreen({
   const insets = useSafeAreaInsets();
   const isEditMode = mode === 'edit';
   const [name, setName] = useState('');
-  const [stops, setStops] = useState<string[]>(['', '', '']);
+  const [markerCoordinates, setMarkerCoordinates] = useState<RouteCoordinate[]>([
+    DEFAULT_MAP_COORDINATE,
+    offsetCoordinate(DEFAULT_MAP_COORDINATE, 1),
+  ]);
+  const [routePreviewCoordinates, setRoutePreviewCoordinates] = useState<RouteCoordinate[]>([]);
+  const [routeDistanceLabel, setRouteDistanceLabel] = useState<string | null>(null);
+  const [loadingPreview, setLoadingPreview] = useState(false);
   const [saving, setSaving] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   useEffect(() => {
     if (route) {
       setName(route.name);
-      setStops(
-        route.stops.length >= 3
-          ? route.stops
-          : [...route.stops, ...Array(3 - route.stops.length).fill('')],
+      setMarkerCoordinates(
+        route.markerCoordinates.length >= 2
+          ? route.markerCoordinates
+          : deriveMarkerCoordinates(route.coordinates),
       );
       return;
     }
 
     setName('');
-    setStops(['', '', '']);
+    setMarkerCoordinates([
+      DEFAULT_MAP_COORDINATE,
+      offsetCoordinate(DEFAULT_MAP_COORDINATE, 1),
+    ]);
   }, [route]);
 
-  const canSave =
-    name.trim().length > 0 &&
-    stops[0]?.trim().length > 0 &&
-    stops[stops.length - 1]?.trim().length > 0;
+  useEffect(() => {
+    let cancelled = false;
 
-  const updateStop = (index: number, value: string) => {
-    setStops((currentStops) =>
-      currentStops.map((stop, stopIndex) => (stopIndex === index ? value : stop)),
+    const timer = setTimeout(async () => {
+      if (markerCoordinates.length < 2) {
+        if (!cancelled) {
+          setRoutePreviewCoordinates(markerCoordinates);
+          setRouteDistanceLabel(null);
+          setLoadingPreview(false);
+        }
+
+        return;
+      }
+
+      setLoadingPreview(true);
+
+      const preview = await buildRoutePreview({
+        name: 'ruta temporal',
+        routeType: 'carretera_nueva',
+        markerCoordinates,
+      });
+
+      if (cancelled) {
+        return;
+      }
+
+      setRoutePreviewCoordinates(preview.coordinates);
+      setRouteDistanceLabel(
+        preview.coordinates.length >= 2 ? `${Math.round(preview.distanceKm)} km aprox.` : null,
+      );
+      setLoadingPreview(false);
+    }, 350);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [markerCoordinates]);
+
+  const canSave = name.trim().length > 0 && markerCoordinates.length >= 2;
+
+  const updateMarkerCoordinate = (index: number, value: RouteCoordinate) => {
+    setMarkerCoordinates((currentMarkers) =>
+      currentMarkers.map((coordinate, markerIndex) => (markerIndex === index ? value : coordinate)),
     );
   };
 
-  const addStop = () => {
-    setStops((currentStops) => [
-      ...currentStops.slice(0, -1),
-      '',
-      currentStops[currentStops.length - 1] ?? '',
-    ]);
+  const addMarker = () => {
+    setMarkerCoordinates((currentMarkers) => {
+      const baseCoordinate = currentMarkers[currentMarkers.length - 1] ?? currentMarkers[0] ?? DEFAULT_MAP_COORDINATE;
+      return [...currentMarkers, offsetCoordinate(baseCoordinate, currentMarkers.length || 1)];
+    });
   };
 
-  const removeStop = (index: number) => {
-    setStops((currentStops) => currentStops.filter((_, stopIndex) => stopIndex !== index));
+  const useMyLocation = async () => {
+    try {
+      const { granted } = await Location.requestForegroundPermissionsAsync();
+      if (!granted) {
+        Alert.alert('Permiso denegado', 'Habilitá permiso de ubicación para usar esta función.');
+        return;
+      }
+
+      const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
+      const coord: RouteCoordinate = {
+        latitude: pos.coords.latitude,
+        longitude: pos.coords.longitude,
+      };
+
+      setMarkerCoordinates((currentMarkers) => {
+        if (currentMarkers.length === 0) {
+          return [coord, offsetCoordinate(coord, 1)];
+        }
+
+        return [coord, ...currentMarkers.slice(1)];
+      });
+    } catch (err) {
+      Alert.alert('No se pudo obtener ubicación', 'Intenta nuevamente.');
+    }
+  };
+
+  const removeMarker = (index: number) => {
+    setMarkerCoordinates((currentMarkers) => currentMarkers.filter((_, markerIndex) => markerIndex !== index));
   };
 
   const handleSave = async () => {
     if (!canSave) {
-      setErrorMessage('Completá el nombre, origen y destino.');
+      setErrorMessage('Completá el nombre y definí al menos dos marcadores.');
       return;
     }
 
@@ -290,7 +375,7 @@ function RouteFormScreen({
       await onSave({
         name,
         routeType: 'carretera_nueva',
-        stops,
+        markerCoordinates: markerCoordinates.filter((coordinate): coordinate is RouteCoordinate => coordinate !== null),
       });
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : 'No se pudo guardar la ruta.');
@@ -301,11 +386,11 @@ function RouteFormScreen({
 
   return (
     <KeyboardAvoidingView
-      style={styles.screen}
+      style={{ flex: 1 }}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
       <ScrollView
-        contentContainerStyle={[styles.formScroll, { paddingBottom: insets.bottom + 104 }]}
+        contentContainerStyle={[styles.formScroll, { paddingBottom: insets.bottom + 200 }]}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
@@ -328,64 +413,265 @@ function RouteFormScreen({
             </Pressable>
           </View>
         </View>
-<View style={styles.formCard}>
+        <View style={[styles.formCard, { paddingBottom: 24 }]}>
           <FieldLabel text="Nombre de la ruta" />
           <TextInput
             value={name}
             onChangeText={setName}
-            placeholder={isEditMode ? 'Cochabamba → Santa Cruz' : 'Ej: Ruta semanal al trabajo'}
+            placeholder={isEditMode ? 'Ruta principal del centro' : 'Ej: Ruta semanal al trabajo'}
             placeholderTextColor="#8F8F8F"
             style={styles.darkInput}
           />
 
-          <FieldLabel text="Paradas" />
-          <View style={styles.stopsGroup}>
-            {stops.map((stop, index) => (
-              <RouteStopRow
-                key={`stop-${index}`}
-                index={index}
-                value={stop}
-                isFirst={index === 0}
-                isLast={index === stops.length - 1}
-                onChange={(value) => updateStop(index, value)}
-                onRemove={
-                  index > 1 && index < stops.length - 1 ? () => removeStop(index) : undefined
-                }
-                placeholder={getStopPlaceholder(index, stops.length)}
-              />
-            ))}
+          <RouteMapEditor
+            markerCoordinates={markerCoordinates}
+            routePreviewCoordinates={routePreviewCoordinates}
+            routeDistanceLabel={routeDistanceLabel}
+            loadingPreview={loadingPreview}
+            onMarkerMove={updateMarkerCoordinate}
+            onAddMarker={addMarker}
+            onRemoveMarker={removeMarker}
+            onUseMyLocation={useMyLocation}
+          />
+
+          <View style={styles.formFooterActions}>
+            <Pressable onPress={useMyLocation} style={styles.secondaryFormButton}>
+              <MaterialIcons name="my-location" size={16} color={PRIMARY} />
+              <Text style={styles.secondaryFormButtonText}>Mi ubicación</Text>
+            </Pressable>
+
+            <Pressable onPress={addMarker} style={styles.secondaryFormButton}>
+             <MaterialIcons name="add-location-alt" size={16} color={PRIMARY} />
+             <Text style={styles.secondaryFormButtonText}>Agregar marcador</Text>
+             </Pressable>
           </View>
-
-          <Pressable onPress={addStop} style={styles.addStopButton}>
-            <MaterialIcons name="add" size={18} color="#5B3FD9" />
-            <Text style={styles.addStopButtonText}>Agregar parada</Text>
-          </Pressable>
-
-          {errorMessage ? <Text style={styles.errorText}>{errorMessage}</Text> : null}
 
           <Pressable
             onPress={handleSave}
             disabled={!canSave || saving}
-            style={({ pressed }) => [
-              styles.simpleSaveButton,
-              !canSave && styles.simpleSaveButtonDisabled,
-              pressed && !(!canSave || saving) && styles.simpleSaveButtonPressed,
-            ]}
+            style={{
+              marginTop: 12,
+              marginHorizontal: 12,
+              marginBottom: 8,
+              height: 55,
+              borderRadius: 12,
+              backgroundColor: (!canSave || saving) ? '#8A6CE0' : '#5B37D0',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
           >
             {saving ? (
-              <ActivityIndicator color="#FFFFFF" />
+              <ActivityIndicator color="white" />
             ) : (
-              <Text style={styles.simpleSaveButtonText}>
-                Guardar Ruta
+              <Text style={{ color: 'white', fontWeight: 'bold', fontSize: 18, textAlign: 'center' }}>
+                Guardar ruta
               </Text>
             )}
           </Pressable>
         </View>
-
       </ScrollView>
     </KeyboardAvoidingView>
   );
 }
+
+function RouteMapEditor({
+  markerCoordinates,
+  routePreviewCoordinates,
+  routeDistanceLabel,
+  loadingPreview,
+  onMarkerMove,
+  onAddMarker,
+  onRemoveMarker,
+  onUseMyLocation,
+}: {
+  markerCoordinates: RouteCoordinate[];
+  routePreviewCoordinates: RouteCoordinate[];
+  routeDistanceLabel: string | null;
+  loadingPreview: boolean;
+  onMarkerMove: (index: number, value: RouteCoordinate) => void;
+  onAddMarker: () => void;
+  onRemoveMarker: (index: number) => void;
+  onUseMyLocation: () => void;
+}) {
+  const mapRef = useRef<MapView | null>(null);
+  useEffect(() => {
+    if (routePreviewCoordinates.length < 2) {
+      return;
+    }
+
+    mapRef.current?.fitToCoordinates(routePreviewCoordinates, {
+      edgePadding: {
+        top: 80,
+        right: 60,
+        bottom: 80,
+        left: 60,
+      },
+      animated: true,
+    });
+  }, [routePreviewCoordinates]);
+
+  const visibleCoordinates = markerCoordinates;
+  const mapLineCoordinates =
+    routePreviewCoordinates.length > 1
+      ? routePreviewCoordinates
+      : visibleCoordinates.length > 0
+        ? visibleCoordinates
+        : [DEFAULT_MAP_COORDINATE];
+  const initialRegion = visibleCoordinates[0]
+    ? {
+        latitude: visibleCoordinates[0].latitude,
+        longitude: visibleCoordinates[0].longitude,
+        latitudeDelta: 0.03,
+        longitudeDelta: 0.03,
+      }
+    : DEFAULT_MAP_REGION;
+
+  return (
+    <View style={styles.mapEditorCard}>
+      <View style={styles.mapEditorHeader}>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.mapEditorTitle}>Mapa de marcadores</Text>
+          <Text style={styles.mapEditorSubtitle}>Mueve los marcadores para definir origen, destino y paradas.</Text>
+          {routeDistanceLabel ? <Text style={styles.mapEditorDistance}>{routeDistanceLabel}</Text> : null}
+        </View>
+        {loadingPreview ? (
+          <View style={{ width: 24, alignItems: 'center', justifyContent: 'center' }}>
+          <ActivityIndicator size="small" color={PRIMARY} />
+      </View>
+      ) : null}
+      </View>
+
+      <View style={styles.mapPreviewWrap}>
+        <MapView
+          ref={mapRef}
+          style={styles.mapPreview}
+          initialRegion={initialRegion}
+          showsCompass={false}
+          showsMyLocationButton={false}
+          scrollEnabled
+          zoomEnabled
+          rotateEnabled={false}
+          pitchEnabled={false}
+        >
+          {mapLineCoordinates.length > 1 ? (
+            <Polyline coordinates={mapLineCoordinates} strokeColor={PRIMARY} strokeWidth={4} />
+          ) : null}
+
+          {markerCoordinates.map((coordinate, index) => {
+            const kind =
+              index === 0 ? 'origin' : index === markerCoordinates.length - 1 ? 'destination' : 'waypoint';
+
+            return (
+              <RouteMapPin
+                key={`route-pin-${index}`}
+                coordinate={coordinate}
+                kind={kind}
+                index={index}
+                onDragEnd={(nextCoordinate) => onMarkerMove(index, nextCoordinate)}
+              />
+            );
+          })}
+        </MapView>
+      </View>
+
+      <View style={styles.markerToolsCard}>
+        <View style={styles.markerToolsHeader}>
+          <Text style={styles.markerToolsTitle}>Marcadores</Text>
+        </View>
+
+        <View style={styles.markerChipsRow}>
+          {markerCoordinates.map((coordinate, index) => (
+            <View key={`marker-chip-${index}`} style={styles.markerChip}>
+              <Text style={styles.markerChipText}>Marcador {index + 1}</Text>
+              <Pressable onPress={() => onRemoveMarker(index)} style={styles.markerChipDelete}>
+                <MaterialIcons name="close" size={14} color="#A44B4B" />
+              </Pressable>
+            </View>
+          ))}
+        </View>
+      </View>
+    </View>
+  );
+}
+
+function RouteMapPin({
+  coordinate,
+  kind,
+  index,
+  onDragEnd,
+}: {
+  coordinate: RouteCoordinate;
+  kind: 'origin' | 'waypoint' | 'destination';
+  index: number;
+  onDragEnd: (coordinate: RouteCoordinate) => void;
+}) {
+  const [tracksViewChanges, setTracksViewChanges] = useState(true);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setTracksViewChanges(false);
+    }, 180);
+
+    return () => clearTimeout(timer);
+  }, []);
+
+  const color =
+    kind === 'origin'
+      ? ROUTE_STOP_COLORS.origin
+      : kind === 'destination'
+        ? ROUTE_STOP_COLORS.destination
+        : index === 1
+          ? ROUTE_STOP_COLORS.middle
+          : ROUTE_STOP_COLORS.extra;
+
+  return (
+    <Marker
+      coordinate={coordinate}
+      draggable
+      tracksViewChanges={tracksViewChanges}
+      onDragEnd={(event) => onDragEnd(event.nativeEvent.coordinate)}
+    >
+      <View style={[styles.mapPinWrap, { shadowColor: color }]}>
+        <View style={[styles.mapPinBody, { backgroundColor: color }]}>
+          <MaterialIcons
+            name={kind === 'origin' ? 'my-location' : 'flag'}
+            size={18}
+            color="#FFFFFF"
+          />
+        </View>
+        <View style={[styles.mapPinTail, { borderTopColor: color }]} />
+      </View>
+    </Marker>
+  );
+}
+
+function deriveMarkerCoordinates(coordinates: RouteCoordinate[]): RouteCoordinate[] {
+  if (coordinates.length <= 2) {
+    return coordinates;
+  }
+
+  const middleIndex = Math.floor(coordinates.length / 2);
+  const selectedCoordinates = [coordinates[0], coordinates[middleIndex], coordinates[coordinates.length - 1]];
+
+  return selectedCoordinates.filter((coordinate, index, allCoordinates) => {
+    const firstIndex = allCoordinates.findIndex(
+      (candidate) =>
+        candidate.latitude === coordinate.latitude && candidate.longitude === coordinate.longitude,
+    );
+
+    return firstIndex === index;
+  });
+}
+
+function offsetCoordinate(base: RouteCoordinate, index: number): RouteCoordinate {
+  const shift = 0.0025 * index;
+
+  return {
+    latitude: base.latitude + shift,
+    longitude: base.longitude + shift,
+  };
+}
+
 
 function RouteCard({
   route,
@@ -407,7 +693,7 @@ function RouteCard({
 
         <View style={styles.routeCardBody}>
           <Text style={styles.routeCardTitle}>{route.name}</Text>
-          <Text style={styles.routeCardMeta}>{route.stops.length} paradas · {formatRouteDistance(route.distanceKm)}</Text>
+          <Text style={styles.routeCardMeta}>{route.markerCoordinates.length} marcadores · {formatRouteDistance(route.distanceKm)}</Text>
         </View>
       </View>
 
@@ -491,76 +777,24 @@ function LoadingScreen({ topInset }: { topInset: number }) {
   );
 }
 
-function RouteStopRow({
-  index,
-  value,
-  isFirst,
-  isLast,
-  onChange,
-  onRemove,
-  placeholder,
-}: {
-  index: number;
-  value: string;
-  isFirst: boolean;
-  isLast: boolean;
-  onChange: (value: string) => void;
-  onRemove?: () => void;
-  placeholder: string;
-}) {
-  const badgeLabel = isFirst ? 'A' : isLast ? 'B' : String(index);
-  const badgeColor =
-    isFirst
-      ? ROUTE_STOP_COLORS.origin
-      : isLast
-        ? ROUTE_STOP_COLORS.destination
-        : index === 1
-          ? ROUTE_STOP_COLORS.middle
-          : ROUTE_STOP_COLORS.extra;
-
-  return (
-    <View style={styles.stopRow}>
-      <View style={[styles.stopBadge, { backgroundColor: badgeColor }]}>
-        <Text style={styles.stopBadgeText}>{badgeLabel}</Text>
-      </View>
-
-      <TextInput
-        value={value}
-        onChangeText={onChange}
-        placeholder={placeholder}
-        placeholderTextColor="#8F8F8F"
-        style={styles.darkInput}
-        blurOnSubmit={false}
-        returnKeyType="next"
-      />
-
-      {onRemove ? (
-        <Pressable onPress={onRemove} style={styles.removeStopButton}>
-          <MaterialIcons name="close" size={16} color="#B45858" />
-        </Pressable>
-      ) : null}
-    </View>
-  );
-}
-
 function FieldLabel({ text }: { text: string }) {
   return <Text style={styles.fieldLabel}>{text}</Text>;
 }
 
-function getStopPlaceholder(index: number, totalStops: number): string {
+function markerColorForIndex(index: number, totalMarkers: number): string {
   if (index === 0) {
-    return 'Origen';
+    return ROUTE_STOP_COLORS.origin;
   }
 
-  if (index === totalStops - 1) {
-    return 'Destino';
+  if (index === totalMarkers - 1) {
+    return ROUTE_STOP_COLORS.destination;
   }
 
   if (index === 1) {
-    return 'Parada intermedia (opcional)';
+    return ROUTE_STOP_COLORS.middle;
   }
 
-  return 'Parada adicional';
+  return ROUTE_STOP_COLORS.extra;
 }
 
 function firstParam(value: string | string[] | undefined): string | undefined {
@@ -829,7 +1063,8 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
   formScroll: {
-    paddingBottom: 20,
+    flexGrow: 1,
+    paddingTop: 0,
   },
   formHeader: {
     backgroundColor: PRIMARY,
@@ -911,6 +1146,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#E7E1F8',
     padding: 14,
+    paddingBottom: 24,
     gap: 12,
   },
   fieldLabel: {
@@ -930,8 +1166,215 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
   },
+  formFooterActions: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  secondaryFormButton: {
+    flex: 1,
+    minHeight: 42,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#D8D0F5',
+    backgroundColor: '#F7F4FF',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+  },
+  secondaryFormButtonText: {
+    color: PRIMARY,
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  mapEditorCard: {
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#E7E1F8',
+    backgroundColor: '#FAF8FF',
+    padding: 12,
+    gap: 10,
+  },
+  mapEditorHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+  mapEditorTitle: {
+    color: TEXT_MAIN,
+    fontSize: 15,
+    fontWeight: '900',
+  },
+  mapEditorSubtitle: {
+    color: TEXT_MUTED,
+    fontSize: 12,
+    lineHeight: 18,
+    fontWeight: '500',
+    marginTop: 2,
+  },
+  mapEditorDistance: {
+    color: PRIMARY,
+    fontSize: 12,
+    fontWeight: '800',
+    marginTop: 4,
+  },
+  mapEditorLocation: {
+    color: '#6E6790',
+    fontSize: 11,
+    fontWeight: '700',
+    marginTop: 4,
+  },
+  mapPreviewWrap: {
+    borderRadius: 14,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: '#E0D8F6',
+    backgroundColor: '#EEF0F7',
+  },
+  mapPreview: {
+    width: '100%',
+    height: 220,
+  },
+  mapPinWrap: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowOpacity: 0.22,
+    shadowRadius: 6,
+    shadowOffset: {
+      width: 0,
+      height: 4,
+    },
+    elevation: 4,
+  },
+  mapPinBody: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  mapPinTail: {
+    width: 0,
+    height: 0,
+    borderLeftWidth: 8,
+    borderRightWidth: 8,
+    borderTopWidth: 12,
+    borderLeftColor: 'transparent',
+    borderRightColor: 'transparent',
+    marginTop: -1,
+  },
+  markerToolsCard: {
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#E4DCF7',
+    backgroundColor: '#FFFFFF',
+    padding: 12,
+    gap: 10,
+  },
+  markerToolsHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    gap: 10,
+  },
+  markerToolsTitle: {
+    color: TEXT_MAIN,
+    fontSize: 13,
+    fontWeight: '900',
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+  },
+  markerToolsActions: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'flex-end',
+    gap: 8,
+  },
+  markerActionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 999,
+    backgroundColor: '#F4F0FF',
+  },
+  markerActionButtonText: {
+    color: PRIMARY,
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  markerChipsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  markerChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingLeft: 10,
+    paddingRight: 8,
+    paddingVertical: 8,
+    borderRadius: 999,
+    backgroundColor: '#F7F4FF',
+    borderWidth: 1,
+    borderColor: '#D9D0F7',
+  },
+  markerChipText: {
+    color: TEXT_MAIN,
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  markerChipDelete: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: '#FFF1F1',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   stopsGroup: {
     gap: 8,
+  },
+  waypointHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+  addWaypointButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 999,
+    backgroundColor: '#F4F0FF',
+  },
+  addWaypointButtonText: {
+    color: '#5B3FD9',
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  emptyWaypointsCard: {
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#E4DDFC',
+    backgroundColor: '#FAF8FF',
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  emptyWaypointsText: {
+    flex: 1,
+    color: '#5D5970',
+    fontSize: 12,
+    lineHeight: 18,
+    fontWeight: '600',
   },
   stopRow: {
     flexDirection: 'row',
@@ -949,6 +1392,21 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 13,
     fontWeight: '800',
+  },
+  stopInputWrap: {
+    flex: 1,
+    gap: 6,
+  },
+  stopInputHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  stopHintText: {
+    color: '#8B84A4',
+    fontSize: 11,
+    fontWeight: '700',
   },
   removeStopButton: {
     width: 30,
@@ -1008,59 +1466,74 @@ const styles = StyleSheet.create({
   saveButtonPressed: {
     opacity: 0.92,
   },
-  simpleSaveButton: {
-    marginTop: 10,
-    marginHorizontal: 20,
-    marginBottom: 30,
-    height: 55,
+  confirmRouteButton: {
+    marginTop: 12,
+    alignSelf: 'stretch',
+    marginHorizontal: 6,
+    minHeight: 56,
     borderRadius: 14,
-    backgroundColor: PRIMARY,
+    backgroundColor: '#F4F0FF',
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 0,
+    paddingHorizontal: 18,
+    flexDirection: 'row',
+    gap: 10,
+    borderWidth: 1,
+    borderColor: '#E0D8F6',
+    shadowColor: '#D8D0F5',
+    shadowOpacity: 0.12,
+    shadowRadius: 8,
+    shadowOffset: {
+      width: 0,
+      height: 3,
+    },
+    elevation: 3,
   },
-  simpleSaveButtonDisabled: {
-    backgroundColor: '#AA9CE9',
-    opacity: 1,
-  },
-  simpleSaveButtonPressed: {
+  confirmRouteButtonDisabled: {
+    backgroundColor: '#F6F4FF',
     opacity: 0.9,
+    borderColor: '#EEEAF8',
   },
-  simpleSaveButtonText: {
-    color: '#5B3FD9',
+  confirmRouteButtonPressed: {
+    opacity: 0.92,
+  },
+  confirmRouteButtonText: {
+    color: PRIMARY,
     fontSize: 16,
-    fontWeight: '700',
+    fontWeight: '800',
     letterSpacing: 0.2,
   },
-  saveButtonContent: {
-    width: '100%',
+  useLocationButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 10,
-    paddingHorizontal: 16,
-  },
-  saveButtonIconWrap: {
-    width: 36,
-    height: 36,
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
     borderRadius: 12,
-    backgroundColor: 'rgba(255,255,255,0.16)',
+    backgroundColor: '#F7F4FF',
+    borderWidth: 1,
+    borderColor: '#E7E1F8',
+  },
+  useLocationText: {
+    color: PRIMARY,
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  useLocationButtonSecondary: {
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 12,
+    backgroundColor: '#ECF9F4',
+    borderWidth: 1,
+    borderColor: '#BFE9DA',
   },
-  saveButtonCopy: {
-    flex: 1,
-    gap: 2,
-  },
-  saveButtonTitle: {
-    color: '#5B3FD9',
-    fontSize: 16,
-    fontWeight: '900',
-  },
-  saveButtonSubtitle: {
-    color: '#ECE8FF',
-    fontSize: 12,
-    fontWeight: '600',
+  useLocationTextSecondary: {
+    color: '#0E7E5B',
+    fontSize: 13,
+    fontWeight: '800',
   },
   loadingScreen: {
     flex: 1,

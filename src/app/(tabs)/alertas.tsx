@@ -110,7 +110,7 @@ export default function AlertasScreen() {
   );
 
   return (
-    <View style={[styles.screen, { paddingTop: insets.top }]}>
+    <View style={[styles.screen, { paddingTop: insets.top, backgroundColor: PRIMARY }]}>
       <View style={styles.header}>
         <View style={styles.headerCopy}>
           <Text style={styles.kicker}>Centro de notificaciones</Text>
@@ -141,7 +141,7 @@ export default function AlertasScreen() {
         </View>
       </View>
 
-      <View style={styles.content}>
+      <View style={[styles.content, { backgroundColor: SURFACE }] }>
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
@@ -508,9 +508,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     gap: 10,
     paddingBottom: 10,
+    flexDirection: 'row'
   },
   filterChip: {
-    minWidth: 96,
+    width: 110,
+    height: 40,
     borderRadius: 16,
     paddingHorizontal: 14,
     paddingVertical: 10,
